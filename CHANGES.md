@@ -78,3 +78,36 @@ Awaiting review.
 
 ### Phase Approval Status
 Phase 4B Development in Progress — Pending Review
+
+---
+
+## ChatGPT Independent Review — 2026-10-31
+
+**Review target:** `07692c3a2b1951c6f26d15ec6b203c70d2f75cc2` (`phase-4b-backend`)
+**Decision:** CHANGES REQUIRED. Local development may continue; no production deployment, production migrations, or guest-claim enablement.
+
+### Verified findings (actual source inspection)
+- [ ] **P0 — Real PostgreSQL verification:** `website/tests/migrations-execution.test.ts` uses `pg-mem` and removes PL/pgSQL functions, triggers, RLS policies, grants, and the seed environment guard before executing SQL. This is *not* a real migration/security integration test. Run unmodified migrations against a disposable local Supabase/PostgreSQL environment and execute role-specific RLS, grants, trigger, RPC, and storage tests. Report exact commands, outcomes, and logs. Keep the fail-closed seed guard intact and explicitly configure only local/test environment.
+- [ ] **P1 — No false success in backend actions:** `website/app/actions/spaces.ts` and `website/app/actions/inquiries.ts` return success with mock IDs when Supabase is unavailable; status/archive/view actions similarly report success without persistence. Restrict mock mode to an explicitly flagged local demo, label it clearly, and fail closed in all real-user modes. Return errors when DB/RPC calls fail, and verify affected row counts where updates may match zero records.
+- [ ] **P1 — Guest claims:** Verify `claim_guest_space` atomically consumes exactly one valid token and updates exactly one unowned listing, with rollback on failure. Verify inquiry reassignment and both triggers in real PostgreSQL; test two simultaneous claim sessions. Keep the feature disabled until proven.
+- [ ] **P1 — Storage access:** Test actual Supabase Storage policies for unauthenticated, owner, and non-owner upload/read/update/delete. Keep uploads disabled until passing.
+- [ ] **P2 — View-count integrity:** `incrementSpaceViewsAction` ignores RPC errors and always reports success; correct result handling. Assess spoofable caller-provided viewer tokens and abuse limits before relying on counts.
+- [ ] **P2 — Test/report accuracy:** Distinguish static/pg-mem tests from real PostgreSQL tests. Do not claim migration execution or RLS verification based on stripped SQL. Update docs and test descriptions accordingly.
+
+### Findings confirmed as improved
+- `00001_initial_schema.sql` now creates `public.spaces` before the `public_profiles` view.
+- `public_spaces` view masks contact phone when WhatsApp consent is false; verify actual grants/view behavior in PostgreSQL.
+
+### Gemini implementation report — to be completed by Gemini
+**Status:** NOT STARTED
+**Files changed:**
+**Commands/tests executed:**
+**Evidence / logs:**
+**Remaining blockers:**
+**New commit SHA:**
+
+### ChatGPT verification
+**Status:** PENDING NEW COMMIT
+**Next phase approval:** NOT YET GRANTED
+
+**Workflow:** Gemini must not edit ChatGPT findings or mark its own work approved. Commit fixes to a development branch, update only the Gemini report/checklist progress with evidence, push, and stop for independent review. Preserve website UI/UX, mobile app, and legacy-reference. Never modify production.
