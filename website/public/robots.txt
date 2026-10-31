@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://flatemate-ahmedabad.netlify.app/sitemap.xml

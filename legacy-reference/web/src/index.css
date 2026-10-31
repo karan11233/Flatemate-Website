@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #111827;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F8FAFC;
+  --secondary-foreground: #111827;
+  --tertiary: #10B981;
+  --tertiary-foreground: #FFFFFF;
+  --muted: #F8FAFC;
+  --muted-foreground: #64748B;
+  --accent: #EEF2FF;
+  --accent-foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --destructive: #DC2626;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #4F46E5;
+  --radius: 0.875rem;
+  --font-sans: 'Plus Jakarta Sans', Inter, sans-serif;
+  --font-heading: 'Plus Jakarta Sans', Inter, sans-serif;
+}
+
+@layer base {
+  html, body {
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  }
+  
+  .font-heading {
+    font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  }
+}
+
+.text-primary { color: #4F46E5 !important; }
+.text-tertiary { color: #10B981 !important; }
+.text-muted-foreground { color: #64748B !important; }
+.text-primary-foreground { color: #FFFFFF !important; }
+
+.bg-primary { background-color: #4F46E5 !important; color: #FFFFFF; }
+.bg-secondary { background-color: #F8FAFC !important; }
+.bg-accent { background-color: #EEF2FF !important; }
+.bg-tertiary { background-color: #10B981 !important; }
+.bg-card { background-color: #FFFFFF !important; }
+
+.border-border { border-color: #E5E7EB !important; }
+.border-input { border-color: #E5E7EB !important; }
+
+/* Custom smooth transitions */
+details summary::-webkit-details-marker {
+  display: none;
+}
