@@ -126,6 +126,15 @@ Phase 4B: Final Integration Verification, Strict Phone Number Validation (No Sil
 3. **Automated Test Coverage**:
    - `website/tests/validations.test.ts`: Added 10 tests under Section 6 covering clean numbers, spaced/dashed formatting, `+91`/`91`/`0` prefixes, rejection of excessive digits without truncation, foreign country code rejection, and dummy number rejection.
    - `website/tests/actions-security.test.ts`: Added Section 5 testing that `createSpaceAction`, `submitInquiryAction`, `updateSpaceStatusAction`, and `archiveInquiryAction` fail closed in production even when `NEXT_PUBLIC_ENABLE_DEMO_MODE=true`.
+4. **UTF-8 Character Encoding & Mojibake Resolution**:
+   - In `website/app/page.tsx`, cleaned up all legacy double-encoded/Windows-1252 mojibake artifacts into proper UTF-8 Unicode characters:
+     - `â€¢` replaced with `•` (bullet) across hero value propositions and pathway badges.
+     - `â‚¹` replaced with `₹` (Indian Rupee symbol) across budget pills, dropdown options, and form labels.
+     - `â€“` replaced with `–` (en-dash) in replacement room badges.
+     - `âœ“` replaced with `✓` (checkmark).
+     - `Â©` replaced with `©` (copyright).
+     - Corrupted emoji sequences restored (`🛡️`, `⚠️`, `🚫`).
+   - Visually re-verified on `http://localhost:3000` with 0 remaining encoding errors.
 
 ### Files Modified
 - `website/lib/validations.ts`

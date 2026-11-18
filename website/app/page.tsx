@@ -281,9 +281,9 @@ export default function App() {
     if (selectedLocality !== 'All' && !item.location.toLowerCase().includes(selectedLocality.toLowerCase())) {
       return false;
     }
-    if (selectedBudget === 'Under â‚¹7,000' && item.rawRent >= 7000) return false;
-    if (selectedBudget === 'â‚¹7,000 - â‚¹8,500' && (item.rawRent < 7000 || item.rawRent > 8500)) return false;
-    if (selectedBudget === 'Above â‚¹8,500' && item.rawRent <= 8500) return false;
+    if (selectedBudget === 'Under ₹7,000' && item.rawRent >= 7000) return false;
+    if (selectedBudget === '₹7,000 - ₹8,500' && (item.rawRent < 7000 || item.rawRent > 8500)) return false;
+    if (selectedBudget === 'Above ₹8,500' && item.rawRent <= 8500) return false;
 
     if (searchLocation !== 'All' && !item.location.toLowerCase().includes(searchLocation.toLowerCase())) {
       return false;
@@ -353,14 +353,14 @@ export default function App() {
     // 1. Anti-Spam Rate Limit Cooldown (Prevent bot flooding)
     const rateCheck = checkPostRateLimit();
     if (!rateCheck.isAllowed) {
-      alert(`ðŸ›¡ï¸ Anti-Spam Protection: Please wait ${rateCheck.waitSeconds}s before posting another listing.`);
+      alert(`🛡️ Anti-Spam Protection: Please wait ${rateCheck.waitSeconds}s before posting another listing.`);
       return;
     }
 
     // 2. Validate Genuine Indian WhatsApp Mobile Number (No 0000000000 or fake sequences)
     const phoneCheck = validateIndianPhone(hostPhone);
     if (!phoneCheck.isValid) {
-      alert(`âš ï¸ ${phoneCheck.reason}`);
+      alert(`⚠️ ${phoneCheck.reason}`);
       return;
     }
 
@@ -368,7 +368,7 @@ export default function App() {
     const textToCheck = `${spaceTitle} ${spaceLocation} ${hostName}`;
     const contentCheck = validateContent(textToCheck);
     if (!contentCheck.isValid) {
-      alert(`ðŸš« Moderation Block: ${contentCheck.reason}`);
+      alert(`🚫 Moderation Block: ${contentCheck.reason}`);
       return;
     }
 
@@ -381,13 +381,13 @@ export default function App() {
       : (spaceTitle.trim() || `${replacementSpots} in ${replacementBhk} (${replacementRoomType})`);
 
     const occupancyText = listingTab === 'seeker'
-      ? `${seekerOccupancy} â€¢ Move-in: ${seekerMoveIn}`
+      ? `${seekerOccupancy} • Move-in: ${seekerMoveIn}`
       : listingTab === 'fresh'
       ? 'Entire Vacant Flat'
       : `${replacementSpots} needed`;
 
     const furnishingText = listingTab === 'seeker'
-      ? `${seekerProfession} â€¢ ${seekerDiet}`
+      ? `${seekerProfession} • ${seekerDiet}`
       : spaceFurnishing;
 
     const cleanLoc = spaceLocation.toLowerCase().includes('ahmedabad')
@@ -403,7 +403,7 @@ export default function App() {
       userId: currentUser?.id || getOrCreateDeviceUserId(),
       category: listingTab,
       type: title,
-      rent: listingTab === 'seeker' ? `Budget: â‚¹${Number(spaceRent).toLocaleString()}` : `â‚¹${Number(spaceRent).toLocaleString()}`,
+      rent: listingTab === 'seeker' ? `Budget: ₹${Number(spaceRent).toLocaleString()}` : `₹${Number(spaceRent).toLocaleString()}`,
       rawRent: Number(spaceRent),
       location: cleanLoc,
       furnishing: furnishingText,
@@ -415,7 +415,7 @@ export default function App() {
       verified: true,
       description: spaceDescription.trim() || (
         listingTab === 'seeker'
-          ? `I am looking for a space in ${cleanLoc}. Preferred: ${seekerLookingFor}. Budget: â‚¹${Number(spaceRent).toLocaleString()}/month. Target move-in: ${seekerMoveIn}. Lifestyle: ${seekerDiet}, ${seekerProfession}.`
+          ? `I am looking for a space in ${cleanLoc}. Preferred: ${seekerLookingFor}. Budget: ₹${Number(spaceRent).toLocaleString()}/month. Target move-in: ${seekerMoveIn}. Lifestyle: ${seekerDiet}, ${seekerProfession}.`
           : ''
       ),
       amenities: selectedAmenities,
@@ -627,12 +627,12 @@ export default function App() {
                   <iconify-icon icon="lucide:check-circle-2" class="text-emerald-600 text-sm"></iconify-icon>
                   100% Free Forever
                 </span>
-                <span>â€¢</span>
+                <span>•</span>
                 <span className="flex items-center gap-1.5">
                   <iconify-icon icon="lucide:check-circle-2" class="text-emerald-600 text-sm"></iconify-icon>
                   Zero Brokerage
                 </span>
-                <span>â€¢</span>
+                <span>•</span>
                 <span className="flex items-center gap-1.5">
                   <iconify-icon icon="lucide:check-circle-2" class="text-emerald-600 text-sm"></iconify-icon>
                   Direct WhatsApp Connect
@@ -700,7 +700,7 @@ export default function App() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 mb-3 group-hover:scale-105 transition-transform">
                   <iconify-icon icon="lucide:building-2" class="text-xl"></iconify-icon>
                 </span>
-                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Seeker â€¢ Full Property</span>
+                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Seeker • Full Property</span>
                 <h3 className="mt-1 font-heading text-base font-bold text-slate-900">Rent Full Vacant Flat</h3>
                 <p className="mt-2 text-xs text-slate-600 leading-relaxed">
                   For friends, colleagues, or families looking to rent an entire 1BHK, 2BHK, 3BHK or villa.
@@ -722,7 +722,7 @@ export default function App() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-50 text-purple-600 mb-3 group-hover:scale-105 transition-transform">
                   <iconify-icon icon="lucide:users" class="text-xl"></iconify-icon>
                 </span>
-                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Seeker â€¢ Single Room / Bed</span>
+                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Seeker • Single Room / Bed</span>
                 <h3 className="mt-1 font-heading text-base font-bold text-slate-900">Join an Occupied Flat</h3>
                 <p className="mt-2 text-xs text-slate-600 leading-relaxed">
                   Looking for a single room or shared spot where flatmates already live and need a replacement.
@@ -766,7 +766,7 @@ export default function App() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 mb-3 group-hover:scale-105 transition-transform">
                   <iconify-icon icon="lucide:plus-circle" class="text-xl"></iconify-icon>
                 </span>
-                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Free Post â€¢ 0% Brokerage</span>
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Free Post • 0% Brokerage</span>
                 <h3 className="mt-1 font-heading text-base font-bold text-slate-900">Post Requirement / Space</h3>
                 <p className="mt-2 text-xs text-slate-600 leading-relaxed">
                   Post what you're looking for or list your vacant apartment in under 2 minutes. 100% free.
@@ -839,9 +839,9 @@ export default function App() {
                   className="w-full bg-transparent text-slate-900 outline-hidden font-bold cursor-pointer"
                 >
                   <option value="All">Any Monthly Budget</option>
-                  <option value="Under â‚¹7,000">Under â‚¹7,000 / month</option>
-                  <option value="â‚¹7,000 - â‚¹8,500">â‚¹7,000 - â‚¹8,500 / month</option>
-                  <option value="Above â‚¹8,500">Above â‚¹8,500 / month</option>
+                  <option value="Under ₹7,000">Under ₹7,000 / month</option>
+                  <option value="₹7,000 - ₹8,500">₹7,000 - ₹8,500 / month</option>
+                  <option value="Above ₹8,500">Above ₹8,500 / month</option>
                 </select>
               </label>
 
@@ -984,9 +984,9 @@ export default function App() {
               <span className="text-xs font-bold text-slate-500 self-center mr-1">Budget:</span>
               {[
                 'Any',
-                'Under â‚¹7,000',
-                'â‚¹7,000 - â‚¹8,500',
-                'Above â‚¹8,500',
+                'Under ₹7,000',
+                '₹7,000 - ₹8,500',
+                'Above ₹8,500',
               ].map((b) => (
                 <button
                   key={b}
@@ -1029,7 +1029,7 @@ export default function App() {
                   {selectedCategoryTab === 'seeker'
                     ? 'Looking for a room or flat in Ahmedabad? Post your requirement for free and let hosts connect with you!'
                     : selectedCategoryTab === 'replacement'
-                    ? 'Living in an apartment and need 1â€“2 flatmates to take over a room? Post your opening for free!'
+                    ? 'Living in an apartment and need 1–2 flatmates to take over a room? Post your opening for free!'
                     : 'Have an available flat or room in Ahmedabad? Be the first to publish with zero brokerage.'}
                 </p>
                 <a
@@ -1277,7 +1277,7 @@ export default function App() {
             <div className="max-w-2xl mb-6 sm:mb-8">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-2">
                 <iconify-icon icon="lucide:sparkles" class="text-sm"></iconify-icon>
-                <span>Zero Brokerage â€¢ Direct Connect</span>
+                <span>Zero Brokerage • Direct Connect</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-slate-900 leading-tight">
                 List Your Space in Ahmedabad
@@ -1350,7 +1350,7 @@ export default function App() {
                             2. Need Flatmate
                           </h4>
                           <p className="text-[10px] sm:text-xs text-slate-500">
-                            1â€“2 room replacement
+                            1–2 room replacement
                           </p>
                         </div>
                       </div>
@@ -1514,7 +1514,7 @@ export default function App() {
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-xs font-bold text-slate-800">Total Monthly Rent (â‚¹) *</label>
+                            <label className="mb-1 block text-xs font-bold text-slate-800">Total Monthly Rent (₹) *</label>
                             <input 
                               type="number"
                               required
@@ -1704,7 +1704,7 @@ export default function App() {
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-xs font-bold text-slate-800">Rent per Person (â‚¹/month) *</label>
+                            <label className="mb-1 block text-xs font-bold text-slate-800">Rent per Person (₹/month) *</label>
                             <input 
                               type="number"
                               required
@@ -1799,7 +1799,7 @@ export default function App() {
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-xs font-bold text-slate-800">Max Monthly Budget (â‚¹) *</label>
+                            <label className="mb-1 block text-xs font-bold text-slate-800">Max Monthly Budget (₹) *</label>
                             <input 
                               type="number"
                               required
@@ -1820,7 +1820,7 @@ export default function App() {
                                       : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                                   }`}
                                 >
-                                  â‚¹{sugg}
+                                  ₹{sugg}
                                 </button>
                               ))}
                             </div>
@@ -1964,7 +1964,7 @@ export default function App() {
                         </div>
                         {currentUser && (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            âœ“ Authenticated Host
+                            ✓ Authenticated Host
                           </span>
                         )}
                       </div>
@@ -2463,7 +2463,7 @@ export default function App() {
 
         <div className="border-t border-border">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-6 py-5 text-xs text-muted-foreground sm:flex-row sm:justify-between lg:px-10">
-            <span>Â© 2026 Flatemate. All rights reserved. Zero Brokerage Ahmedabad.</span>
+            <span>© 2026 Flatemate. All rights reserved. Zero Brokerage Ahmedabad.</span>
             <span>Built for Ahmedabad shared living & roommate discovery.</span>
           </div>
         </div>
