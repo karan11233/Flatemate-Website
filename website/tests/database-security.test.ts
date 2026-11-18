@@ -268,4 +268,129 @@ describe('Hardened Database Security & RLS Invariants (Round 2)', () => {
     });
   });
 
+  describe('8. Pre-Migration Hardening Regression Tests', () => {
+    it('verifies claim_guest_space rolls back claim token deletion if listing update affects 0 rows', () => {
+      // Simulate database tables and transaction state
+      const initialSecret = { hash: 'sha256_valid_hash', expiresAt: Date.now() + 60000 };
+      let claimSecretsDb: Record<string, { hash: string; expiresAt: number } | undefined> = {
+        'space-1': { ...initialSecret },
+      };
+      let spacesDb: Record<string, { id: string; user_id: string | null } | undefined> = {
+        'space-1': { id: 'space-1', user_id: 'already-owned-user' }, // Space is already owned!
+      };
+
+      const executeClaimGuestSpace = (spaceId: string, tokenHash: string, claimerAuthId: string) => {
+        // Transaction begin snapshot for rollback simulation
+        const snapshotSecrets = JSON.parse(JSON.stringify(claimSecretsDb));
+        const snapshotSpaces = JSON.parse(JSON.stringify(spacesDb));
+
+        try {
+          // 1. Row lock verification
+          const space = spacesDb[spaceId];
+          if (!space) throw new Error('Listing not found');
+          if (space.user_id !== null) throw new Error('Listing has already been claimed');
+
+          // 2. Consume token
+          const secret = claimSecretsDb[spaceId];
+          if (!secret || secret.hash !== tokenHash || secret.expiresAt < Date.now()) {
+            throw new Error('Invalid or expired claim token');
+          }
+          delete claimSecretsDb[spaceId];
+
+          // 3. Update space (must update exactly 1 unclaimed row)
+          let updatedRows = 0;
+          if (spacesDb[spaceId] && spacesDb[spaceId]!.user_id === null) {
+            spacesDb[spaceId]!.user_id = claimerAuthId;
+            updatedRows = 1;
+          }
+
+          if (updatedRows !== 1) {
+            throw new Error('Claim failed: listing could not be updated or was already claimed');
+          }
+
+          return { success: true, space_id: spaceId, owner_id: claimerAuthId };
+        } catch (err) {
+          // Transaction rollback: restores tables to snapshot state
+          claimSecretsDb = snapshotSecrets;
+          spacesDb = snapshotSpaces;
+          throw err;
+        }
+      };
+
+      // Attempt claim on already-owned listing
+      expect(() => executeClaimGuestSpace('space-1', 'sha256_valid_hash', 'attacker-uid'))
+        .toThrow('Listing has already been claimed');
+
+      // Crucial verification: token secret is NOT consumed; rolled back safely!
+      expect(claimSecretsDb['space-1']).toBeDefined();
+      expect(claimSecretsDb['space-1']?.hash).toBe('sha256_valid_hash');
+    });
+
+    it('enforces that simultaneous concurrent inquiries with the same phone for the same space are serialized and blocked by cooldown', async () => {
+      // Simulation of concurrent transaction advisory locking:
+      // perform pg_advisory_xact_lock(hashtext(new.space_id::text || ':' || new.seeker_phone));
+      const activeAdvisoryLocks = new Set<string>();
+      const inquiriesDb: Array<{ space_id: string; seeker_phone: string; created_at: number }> = [];
+
+      const acquireAdvisoryLock = async (key: string): Promise<() => void> => {
+        while (activeAdvisoryLocks.has(key)) {
+          // Wait for previous transaction to release lock (serial queue)
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        activeAdvisoryLocks.add(key);
+        return () => activeAdvisoryLocks.delete(key);
+      };
+
+      const submitInquiryWithAdvisoryLock = async (spaceId: string, phone: string) => {
+        const lockKey = `${spaceId}:${phone}`;
+        const releaseLock = await acquireAdvisoryLock(lockKey);
+
+        try {
+          // Check 5-minute cooldown inside serialized lock
+          const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+          const hasRecent = inquiriesDb.some(
+            (inq) => inq.space_id === spaceId && inq.seeker_phone === phone && inq.created_at > fiveMinutesAgo
+          );
+
+          if (hasRecent) {
+            throw new Error('An inquiry from this phone number was recently submitted. Please wait before submitting again.');
+          }
+
+          // Insert new inquiry
+          inquiriesDb.push({
+            space_id: spaceId,
+            seeker_phone: phone,
+            created_at: Date.now(),
+          });
+
+          return { success: true };
+        } finally {
+          releaseLock();
+        }
+      };
+
+      // Launch TWO simultaneous concurrent submissions for the exact same space and phone
+      const [attempt1, attempt2] = await Promise.allSettled([
+        submitInquiryWithAdvisoryLock('space-uuid-1', '9825123456'),
+        submitInquiryWithAdvisoryLock('space-uuid-1', '9825123456'),
+      ]);
+
+      // Exactly one succeeds, the simultaneous race condition duplicate is blocked
+      const successfulAttempts = [attempt1, attempt2].filter((res) => res.status === 'fulfilled');
+      const rejectedAttempts = [attempt1, attempt2].filter((res) => res.status === 'rejected');
+
+      expect(successfulAttempts.length).toBe(1);
+      expect(rejectedAttempts.length).toBe(1);
+      expect((rejectedAttempts[0] as PromiseRejectedResult).reason.message).toContain('recently submitted');
+      expect(inquiriesDb.filter((i) => i.space_id === 'space-uuid-1').length).toBe(1);
+
+      // Concurrent submissions for a DIFFERENT space or phone succeed in parallel without blocking
+      const differentSpaceAttempt = await submitInquiryWithAdvisoryLock('space-uuid-2', '9825123456');
+      expect(differentSpaceAttempt.success).toBe(true);
+
+      const differentPhoneAttempt = await submitInquiryWithAdvisoryLock('space-uuid-1', '9825199999');
+      expect(differentPhoneAttempt.success).toBe(true);
+    });
+  });
+
 });

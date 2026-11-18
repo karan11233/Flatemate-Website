@@ -365,6 +365,10 @@ begin
   end if;
 
   -- Abuse prevention & anti-spam: reject rapid duplicate inquiries from same phone for same space
+  -- Acquire transaction-level advisory lock on (space_id, seeker_phone) hash
+  -- to serialize simultaneous submissions and eliminate race-condition duplicates
+  perform pg_advisory_xact_lock(hashtext(new.space_id::text || ':' || new.seeker_phone));
+
   if exists (
     select 1 from public.inquiries
     where space_id = new.space_id
@@ -494,7 +498,8 @@ create or replace function public.claim_guest_space(
 returns jsonb as $$
 declare
   v_token_hash text;
-  v_updated_id uuid;
+  v_secret_space_id uuid;
+  v_claimed_space_id uuid;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required to claim listing';
@@ -506,30 +511,45 @@ begin
 
   v_token_hash := encode(digest(p_claim_token, 'sha256'), 'hex');
 
-  -- Atomic conditional delete of claim secret with validation
+  -- Step 1: Row lock the space record to serialize concurrent claim attempts
+  perform 1 from public.spaces
+  where id = p_space_id
+  for update;
+
+  if not found then
+    raise exception 'Listing not found';
+  end if;
+
+  if exists (select 1 from public.spaces where id = p_space_id and user_id is not null) then
+    raise exception 'Listing has already been claimed';
+  end if;
+
+  -- Step 2: Validate and conditionally consume the claim secret
   delete from public.space_claim_secrets
   where space_id = p_space_id
     and claim_token_hash = v_token_hash
     and claim_expires_at > now()
-  returning space_id into v_updated_id;
+  returning space_id into v_secret_space_id;
 
-  if v_updated_id is null then
-    if exists (select 1 from public.spaces where id = p_space_id and user_id is not null) then
-      raise exception 'Listing has already been claimed';
-    else
-      raise exception 'Invalid or expired claim token';
-    end if;
+  if v_secret_space_id is null then
+    raise exception 'Invalid or expired claim token';
   end if;
 
-  -- Atomic update of space ownership
+  -- Step 3: Update space ownership and strictly verify exactly 1 row was updated
   update public.spaces
   set
     user_id = auth.uid(),
     updated_at = now()
   where id = p_space_id
-    and user_id is null;
+    and user_id is null
+  returning id into v_claimed_space_id;
 
-  -- Reassign any pending inquiries
+  if v_claimed_space_id is null or v_claimed_space_id <> p_space_id then
+    -- Raising an exception rolls back the transaction, restoring the claim token
+    raise exception 'Claim failed: listing could not be updated or was already claimed';
+  end if;
+
+  -- Step 4: Reassign any pending inquiries
   update public.inquiries
   set
     host_id = auth.uid(),
