@@ -19,6 +19,13 @@ describe('SQL Migrations Execution & Schema Verification', () => {
         raw_user_meta_data jsonb
       );
       create schema if not exists storage;
+      create table if not exists storage.buckets (
+        id text primary key,
+        name text not null,
+        public boolean default false,
+        file_size_limit bigint,
+        allowed_mime_types text[]
+      );
     `);
 
     // Register mock functions for pg-mem

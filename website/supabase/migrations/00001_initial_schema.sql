@@ -336,6 +336,7 @@ create table if not exists public.inquiries (
 );
 
 create index if not exists idx_inquiries_space_id on public.inquiries(space_id);
+create index if not exists idx_inquiries_space_phone on public.inquiries(space_id, seeker_phone);
 create index if not exists idx_inquiries_host_id on public.inquiries(host_id);
 create index if not exists idx_inquiries_seeker_id on public.inquiries(seeker_id);
 create index if not exists idx_inquiries_created_at on public.inquiries(created_at desc);
@@ -361,6 +362,16 @@ begin
 
   if v_status <> 'active' then
     raise exception 'Cannot submit inquiry for inactive or rented space';
+  end if;
+
+  -- Abuse prevention & anti-spam: reject rapid duplicate inquiries from same phone for same space
+  if exists (
+    select 1 from public.inquiries
+    where space_id = new.space_id
+      and seeker_phone = new.seeker_phone
+      and created_at > (now() - interval '5 minutes')
+  ) then
+    raise exception 'An inquiry from this phone number was recently submitted. Please wait before submitting again.';
   end if;
 
   new.host_id := v_host_id;

@@ -145,6 +145,10 @@ Phase 4B: Final Integration Verification, Strict Phone Number Validation (No Sil
 - `website/app/page.tsx`
 - `website/tests/validations.test.ts`
 - `website/tests/actions-security.test.ts`
+- `website/supabase/migrations/00001_initial_schema.sql`
+- `website/supabase/migrations/00002_row_level_security.sql`
+- `website/supabase/migrations/00003_storage_setup.sql`
+- `website/tests/migrations-execution.test.ts`
 - `CHANGES.md`
 
 ### Test & Build Verification Results

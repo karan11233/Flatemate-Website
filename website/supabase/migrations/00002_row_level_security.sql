@@ -25,10 +25,12 @@ alter table public.rate_limits enable row level security;
 -- 2. Profiles Policies & Grants
 -- ----------------------------------------------------------------------------
 -- Direct table access only permits viewing own user profile
+drop policy if exists "Users can only view own profile table" on public.profiles;
 create policy "Users can only view own profile table"
   on public.profiles for select
   using (auth.uid() is not null and auth.uid() = id);
 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() is not null and auth.uid() = id)
@@ -44,11 +46,13 @@ grant select on public.public_profiles to anon, authenticated;
 -- CRITICAL DEFENSE: Direct PostgREST queries to raw public.spaces return ONLY
 -- the caller's own listings. Anonymous visitors get 0 rows.
 -- Public browsing MUST query the sanitized public.public_spaces view.
+drop policy if exists "Users can view own listings on raw table" on public.spaces;
 create policy "Users can view own listings on raw table"
   on public.spaces for select
   using (auth.uid() is not null and auth.uid() = user_id);
 
 -- Authenticated users can create listings
+drop policy if exists "Authenticated users can create spaces" on public.spaces;
 create policy "Authenticated users can create spaces"
   on public.spaces for insert
   with check (
@@ -57,12 +61,14 @@ create policy "Authenticated users can create spaces"
   );
 
 -- Only verified owners can update their listings (Triggers enforce business fields)
+drop policy if exists "Owners can update own spaces" on public.spaces;
 create policy "Owners can update own spaces"
   on public.spaces for update
   using (auth.uid() is not null and auth.uid() = user_id)
   with check (auth.uid() is not null and auth.uid() = user_id);
 
 -- Only verified owners can delete their listings
+drop policy if exists "Owners can delete own spaces" on public.spaces;
 create policy "Owners can delete own spaces"
   on public.spaces for delete
   using (auth.uid() is not null and auth.uid() = user_id);
@@ -74,6 +80,7 @@ grant select on public.public_spaces to anon, authenticated;
 -- 4. Space Claim Secrets Policies & Grants
 -- ----------------------------------------------------------------------------
 -- Zero public access. Managed entirely via service_role and claim_guest_space RPC
+drop policy if exists "Service role only for claim secrets" on public.space_claim_secrets;
 create policy "Service role only for claim secrets"
   on public.space_claim_secrets
   using (auth.role() = 'service_role');
@@ -83,10 +90,12 @@ revoke all on public.space_claim_secrets from anon, authenticated;
 -- ----------------------------------------------------------------------------
 -- 5. Space Photos Policies
 -- ----------------------------------------------------------------------------
+drop policy if exists "Public can view space photos" on public.space_photos;
 create policy "Public can view space photos"
   on public.space_photos for select
   using (true);
 
+drop policy if exists "Space owners can insert photos" on public.space_photos;
 create policy "Space owners can insert photos"
   on public.space_photos for insert
   with check (
@@ -97,6 +106,7 @@ create policy "Space owners can insert photos"
     )
   );
 
+drop policy if exists "Space owners can delete photos" on public.space_photos;
 create policy "Space owners can delete photos"
   on public.space_photos for delete
   using (
@@ -111,6 +121,7 @@ create policy "Space owners can delete photos"
 -- 6. Inquiries Policies
 -- ----------------------------------------------------------------------------
 -- Zero unauthenticated leaks: anonymous queries return 0 rows
+drop policy if exists "Hosts and seekers can view own inquiries" on public.inquiries;
 create policy "Hosts and seekers can view own inquiries"
   on public.inquiries for select
   using (
@@ -121,6 +132,7 @@ create policy "Hosts and seekers can view own inquiries"
     )
   );
 
+drop policy if exists "Anyone can submit inquiry" on public.inquiries;
 create policy "Anyone can submit inquiry"
   on public.inquiries for insert
   with check (
@@ -128,6 +140,7 @@ create policy "Anyone can submit inquiry"
     and seeker_phone ~ '^[0-9]{10}$'
   );
 
+drop policy if exists "Participants can update inquiry" on public.inquiries;
 create policy "Participants can update inquiry"
   on public.inquiries for update
   using (
@@ -146,6 +159,7 @@ create policy "Participants can update inquiry"
   );
 
 -- Hard deletion strictly denied to protect records
+drop policy if exists "Deny unilateral hard delete inquiries" on public.inquiries;
 create policy "Deny unilateral hard delete inquiries"
   on public.inquiries for delete
   using (false);
@@ -153,14 +167,17 @@ create policy "Deny unilateral hard delete inquiries"
 -- ----------------------------------------------------------------------------
 -- 7. Reports & Rate Limits
 -- ----------------------------------------------------------------------------
+drop policy if exists "Anyone can submit listing report" on public.reports;
 create policy "Anyone can submit listing report"
   on public.reports for insert
   with check (char_length(reason) >= 3);
 
+drop policy if exists "Reporters can view own reports" on public.reports;
 create policy "Reporters can view own reports"
   on public.reports for select
   using (auth.uid() is not null and auth.uid() = reporter_id);
 
+drop policy if exists "Service role manages rate limits" on public.rate_limits;
 create policy "Service role manages rate limits"
   on public.rate_limits
   using (auth.role() = 'service_role');
