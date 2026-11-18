@@ -114,6 +114,83 @@ export function isApprovedImageSource(url: string): boolean {
   }
 }
 
+/**
+ * Normalizes and validates Indian mobile numbers.
+ * Accepts:
+ * - 10-digit mobile number: "9825123456", "98251 23456", "98251-23456"
+ * - +91 prefixed: "+919825123456", "+91 9825123456", "+91-98251-23456"
+ * - 91 prefixed (12 digits): "919825123456"
+ * - 0 prefixed (11 digits): "09825123456"
+ * Rejects without silent truncation:
+ * - Non-string / empty
+ * - Excessive digits without valid prefix (e.g. 11+ digits like "123459825123456")
+ * - Invalid international prefixes (+1, +44, +92, etc.)
+ * - Repetitive dummy numbers (e.g. 9999999999) or sequential placeholder numbers (1234567890)
+ * - Numbers starting with 0-5 (Indian mobiles must start with 6, 7, 8, or 9)
+ */
+export function normalizeIndianPhone(input: any): { phone?: string; error?: string } {
+  if (typeof input !== 'string' && typeof input !== 'number') {
+    return { error: 'Phone number must be a valid 10-digit Indian mobile number' };
+  }
+
+  const raw = String(input).trim();
+  if (!raw) {
+    return { error: 'Phone number is required (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  // Check for invalid characters (only digits, spaces, dashes, parentheses, and leading + allowed)
+  if (!/^\+?[\d\s\-()]+$/.test(raw)) {
+    return { error: 'Phone number contains invalid characters (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  let cleaned = raw.replace(/[\s\-()]/g, '');
+
+  // Handle +91 / 91 / 0 prefix
+  if (cleaned.startsWith('+91')) {
+    cleaned = cleaned.slice(3);
+  } else if (cleaned.startsWith('+')) {
+    return { error: 'Only Indian mobile numbers (+91) are supported (must be a valid 10-digit Indian mobile number)' };
+  } else if (cleaned.startsWith('91') && cleaned.length === 12) {
+    cleaned = cleaned.slice(2);
+  } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = cleaned.slice(1);
+  }
+
+  // Must be strictly digits
+  if (!/^\d+$/.test(cleaned)) {
+    return { error: 'Phone number must contain only numeric digits (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  if (cleaned.length < 10) {
+    return { error: 'Phone number is too short (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  if (cleaned.length > 10) {
+    return { error: 'Phone number is too long (must be a valid 10-digit Indian mobile number without truncation)' };
+  }
+
+  // Indian mobiles must start with 6, 7, 8, or 9
+  if (!/^[6-9]/.test(cleaned)) {
+    return { error: 'Indian mobile number must start with 6, 7, 8, or 9 (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  // Reject all same digits (e.g. 9999999999, 8888888888)
+  if (/^(\d)\1{9}$/.test(cleaned)) {
+    return { error: 'Repetitive dummy phone numbers are not allowed (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  // Reject obvious dummy sequences
+  if (cleaned === '1234567890' || cleaned === '0123456789') {
+    return { error: 'Sequential placeholder phone numbers are not allowed (must be a valid 10-digit Indian mobile number)' };
+  }
+
+  return { phone: cleaned };
+}
+
+export function isValidIndianPhone(input: any): boolean {
+  return normalizeIndianPhone(input).phone !== undefined;
+}
+
 export function validateSpaceInput(input: any): { data?: ValidatedSpaceInput; error?: string } {
   if (!input || typeof input !== 'object') {
     return { error: 'Invalid input payload' };
@@ -181,10 +258,12 @@ export function validateSpaceInput(input: any): { data?: ValidatedSpaceInput; er
     return { error: 'Contact name must be between 2 and 80 characters' };
   }
 
-  const phoneDigits = String(input.contactPhone || '').replace(/\D/g, '').slice(-10);
-  if (phoneDigits.length !== 10) {
-    return { error: 'Contact phone must be a valid 10-digit Indian mobile number' };
+  // Strict Indian mobile phone validation (no silent truncation)
+  const phoneValidation = normalizeIndianPhone(input.contactPhone);
+  if (phoneValidation.error || !phoneValidation.phone) {
+    return { error: `Contact phone: ${phoneValidation.error}` };
   }
+  const contactPhone = phoneValidation.phone;
 
   // Explicit opt-in consent: must be true boolean
   const consentWhatsappContact = Boolean(input.consentWhatsappContact === true);
@@ -220,7 +299,7 @@ export function validateSpaceInput(input: any): { data?: ValidatedSpaceInput; er
       amenities,
       images,
       contactName,
-      contactPhone: phoneDigits,
+      contactPhone,
       consentWhatsappContact,
     },
   };
@@ -241,10 +320,12 @@ export function validateInquiryInput(input: any): { data?: ValidatedInquiryInput
     return { error: 'Name must be between 2 and 80 characters' };
   }
 
-  const phoneDigits = String(input.seekerPhone || '').replace(/\D/g, '').slice(-10);
-  if (phoneDigits.length !== 10) {
-    return { error: 'Phone must be a valid 10-digit Indian mobile number' };
+  // Strict Indian mobile phone validation (no silent truncation)
+  const phoneValidation = normalizeIndianPhone(input.seekerPhone);
+  if (phoneValidation.error || !phoneValidation.phone) {
+    return { error: `Seeker phone: ${phoneValidation.error}` };
   }
+  const seekerPhone = phoneValidation.phone;
 
   const seekerMessage = input.seekerMessage ? String(input.seekerMessage).trim().slice(0, 1000) : undefined;
 
@@ -263,7 +344,7 @@ export function validateInquiryInput(input: any): { data?: ValidatedInquiryInput
     data: {
       spaceId,
       seekerName,
-      seekerPhone: phoneDigits,
+      seekerPhone,
       seekerMessage,
       moveInDate,
     },

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { incrementSpaceViewsAction, updateSpaceStatusAction, createSpaceAction } from '../app/actions/spaces';
-import { getHostInquiriesAction, updateInquiryStatusAction, archiveInquiryAction } from '../app/actions/inquiries';
+import { submitInquiryAction, getHostInquiriesAction, updateInquiryStatusAction, archiveInquiryAction } from '../app/actions/inquiries';
 import { getCloudSpaces, getCloudInquiries, insertCloudSpace } from '../lib/supabase';
 import { SpaceListing } from '../types';
 
@@ -187,6 +187,58 @@ describe('Server Actions Security & Persistence Error Handling Tests', () => {
 
       const ownerResult = executeUpdateSpaceStatus('legitimate-host-uuid-111', victimSpace, 'rented');
       expect(ownerResult.success).toBe(true);
+    });
+  });
+
+  describe('5. Demo Mode Fail-Closed Production Security', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE;
+
+    afterEach(() => {
+      (process.env as any).NODE_ENV = originalNodeEnv;
+      process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE = originalDemoMode;
+    });
+
+    it('strictly forbids mock successes when NODE_ENV is production even if NEXT_PUBLIC_ENABLE_DEMO_MODE=true', async () => {
+      // Force production environment
+      (process.env as any).NODE_ENV = 'production';
+      process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE = 'true';
+
+      // 1. Submit inquiry must fail closed (no mock success in production)
+      const inquiryRes = await submitInquiryAction({
+        spaceId: 'c56a4180-65aa-42ec-a945-5fd21dec0538',
+        seekerName: 'Priya Sharma',
+        seekerPhone: '9825123456',
+        seekerMessage: 'Interested',
+      });
+      expect(inquiryRes.success).toBe(false);
+      expect(inquiryRes.error).toContain('Database service is not configured');
+
+      // 2. Create space must fail closed
+      const spaceRes = await createSpaceAction({
+        title: '2BHK Apartment Navrangpura',
+        description: 'Spacious apartment looking for a quiet flatmate in Navrangpura.',
+        location: 'Navrangpura',
+        rent: 15000,
+        deposit: 30000,
+        listingType: 'room',
+        genderPreference: 'any',
+        furnishing: 'fully_furnished',
+        roomType: 'Private Room',
+        contactName: 'Host Name',
+        contactPhone: '9825123456',
+        consentWhatsappContact: true,
+      });
+      expect(spaceRes.success).toBe(false);
+      expect(spaceRes.error).toContain('Database service is not configured');
+
+      // 3. Status updates must fail closed
+      const updateRes = await updateSpaceStatusAction('c56a4180-65aa-42ec-a945-5fd21dec0538', 'rented');
+      expect(updateRes.success).toBe(false);
+
+      // 4. Archive inquiry must fail closed
+      const archiveRes = await archiveInquiryAction('c56a4180-65aa-42ec-a945-5fd21dec0538', 'host');
+      expect(archiveRes.success).toBe(false);
     });
   });
 

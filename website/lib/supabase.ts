@@ -4,6 +4,7 @@ import { INITIAL_MOCK_SPACES, INITIAL_MOCK_INQUIRIES } from '../data/mockData';
 import { getPublicSpacesAction, createSpaceAction, updateSpaceStatusAction } from '@/app/actions/spaces';
 import { submitInquiryAction, getHostInquiriesAction, updateInquiryStatusAction } from '@/app/actions/inquiries';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { normalizeIndianPhone } from '@/lib/validations';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -48,25 +49,30 @@ export async function signUpUser({
   fullName: string;
   phone: string;
 }): Promise<{ user: AuthUser | null; error: string | null; needsEmailVerification?: boolean }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const client = getSupabaseBrowserClient();
+
+  const phoneValidation = normalizeIndianPhone(phone);
+  if (phoneValidation.error || !phoneValidation.phone) {
+    return { user: null, error: `Invalid mobile number: ${phoneValidation.error}` };
+  }
+  const cleanPhone = phoneValidation.phone;
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = fullName.trim();
 
   if (!client) {
     if (isDemoMode) {
       const mockUser: AuthUser = {
         id: `mock-${Date.now()}`,
-        email: email.trim().toLowerCase(),
-        phone: phone.trim().slice(-10),
-        fullName: fullName.trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        fullName: cleanName,
       };
       return { user: mockUser, error: null };
     }
     return { user: null, error: 'Authentication service is not configured' };
   }
-
-  const cleanEmail = email.trim().toLowerCase();
-  const cleanPhone = phone.trim().slice(-10);
-  const cleanName = fullName.trim();
 
   const { data, error } = await client.auth.signUp({
     email: cleanEmail,
@@ -108,7 +114,8 @@ export async function signInUser({
   email: string;
   password: string;
 }): Promise<{ user: AuthUser | null; error: string | null }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const client = getSupabaseBrowserClient();
 
   if (!client) {
@@ -182,7 +189,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
  * Fetch spaces (Server Action with transparent error reporting)
  */
 export async function getCloudSpaces(): Promise<{ data: SpaceListing[]; error?: string }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   try {
     const res = await getPublicSpacesAction();
     if (res.error) {
@@ -207,10 +215,12 @@ export async function getCloudSpaces(): Promise<{ data: SpaceListing[]; error?: 
 export async function insertCloudSpace(
   space: SpaceListing
 ): Promise<{ success: boolean; id?: string; error?: string }> {
-  const cleanPhone = (space.hostPhone || '').replace(/\D/g, '').slice(-10);
-  if (cleanPhone.length !== 10) {
-    return { success: false, error: 'A valid 10-digit Indian mobile number is required to list a space.' };
+  // Strict validation of user-provided phone without silent truncation
+  const phoneValidation = normalizeIndianPhone(space.hostPhone);
+  if (phoneValidation.error || !phoneValidation.phone) {
+    return { success: false, error: `A valid 10-digit Indian mobile number is required for host contact: ${phoneValidation.error}` };
   }
+  const cleanPhone = phoneValidation.phone;
 
   try {
     const res = await createSpaceAction({
@@ -254,7 +264,8 @@ export async function updateCloudSpaceStatus(
  * Fetch inquiries (Server Action with transparent error reporting)
  */
 export async function getCloudInquiries(): Promise<{ data: Inquiry[]; error?: string }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   try {
     const res = await getHostInquiriesAction();
     if (res.error) {

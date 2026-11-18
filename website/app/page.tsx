@@ -217,7 +217,7 @@ export default function App() {
 
   // Real Spaces
   const [spaces, setSpaces] = useState<SpaceListing[]>(() => {
-    if (process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
+    if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
       return INITIAL_MOCK_SPACES;
     }
     return [];
@@ -225,7 +225,7 @@ export default function App() {
 
   // Real Inquiries
   const [inquiries, setInquiries] = useState<Inquiry[]>(() => {
-    if (process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
+    if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
       return INITIAL_MOCK_INQUIRIES;
     }
     return [];

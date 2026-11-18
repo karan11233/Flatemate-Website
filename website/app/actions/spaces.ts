@@ -9,7 +9,8 @@ import { SpaceListing } from '@/types';
  * Fetch public listings from the sanitized public_spaces view
  */
 export async function getPublicSpacesAction(): Promise<{ data: SpaceListing[]; error?: string }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
 
   try {
     const supabase = await createServerSupabaseClient();
@@ -75,7 +76,8 @@ export async function createSpaceAction(payload: any): Promise<{ success: boolea
     return { success: false, error: validation.error };
   }
 
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) {
@@ -139,7 +141,8 @@ export async function updateSpaceStatusAction(
     return { success: false, error: 'Invalid space ID' };
   }
 
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) return { success: true };

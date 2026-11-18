@@ -15,7 +15,8 @@ export async function submitInquiryAction(payload: any): Promise<{ success: bool
     return { success: false, error: validation.error };
   }
 
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) {
@@ -53,7 +54,8 @@ export async function submitInquiryAction(payload: any): Promise<{ success: bool
  * Strictly requires verified session. Zero unauthenticated phone-number lookup.
  */
 export async function getHostInquiriesAction(): Promise<{ data: Inquiry[]; error?: string }> {
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) {
@@ -120,7 +122,8 @@ export async function updateInquiryStatusAction(
     return { success: false, error: 'Invalid inquiry ID' };
   }
 
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) return { success: true };
@@ -161,7 +164,8 @@ export async function archiveInquiryAction(
     return { success: false, error: 'Invalid inquiry ID' };
   }
 
-  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  // Fail-closed: demo mode strictly forbidden in production
+  const isDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     if (isDemoMode) return { success: true };

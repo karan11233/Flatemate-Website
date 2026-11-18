@@ -3,6 +3,8 @@ import {
   isValidUUID,
   isValidMoveInDate,
   isApprovedImageSource,
+  normalizeIndianPhone,
+  isValidIndianPhone,
   validateSpaceInput,
   validateInquiryInput,
 } from '../lib/validations';
@@ -198,4 +200,86 @@ describe('Flatemate Validation & Sanitization Tests', () => {
     });
   });
 
+  describe('6. Indian Mobile Number Validation (normalizeIndianPhone & isValidIndianPhone)', () => {
+    it('accepts clean 10-digit Indian mobile numbers starting with 6, 7, 8, or 9', () => {
+      expect(normalizeIndianPhone('9825123456')).toEqual({ phone: '9825123456' });
+      expect(normalizeIndianPhone('8825123456')).toEqual({ phone: '8825123456' });
+      expect(normalizeIndianPhone('7825123456')).toEqual({ phone: '7825123456' });
+      expect(normalizeIndianPhone('6825123456')).toEqual({ phone: '6825123456' });
+      expect(isValidIndianPhone('9825123456')).toBe(true);
+    });
+
+    it('accepts numbers formatted with spaces, dashes, or parentheses', () => {
+      expect(normalizeIndianPhone('98251 23456')).toEqual({ phone: '9825123456' });
+      expect(normalizeIndianPhone('98251-23456')).toEqual({ phone: '9825123456' });
+      expect(normalizeIndianPhone('(98251) 23456')).toEqual({ phone: '9825123456' });
+      expect(isValidIndianPhone('98251-23456')).toBe(true);
+    });
+
+    it('accepts valid +91 prefix variants', () => {
+      expect(normalizeIndianPhone('+919825123456')).toEqual({ phone: '9825123456' });
+      expect(normalizeIndianPhone('+91 98251 23456')).toEqual({ phone: '9825123456' });
+      expect(normalizeIndianPhone('+91-98251-23456')).toEqual({ phone: '9825123456' });
+      expect(isValidIndianPhone('+91 98251 23456')).toBe(true);
+    });
+
+    it('accepts 12-digit numbers with 91 country code prefix', () => {
+      expect(normalizeIndianPhone('919825123456')).toEqual({ phone: '9825123456' });
+      expect(isValidIndianPhone('919825123456')).toBe(true);
+    });
+
+    it('accepts 11-digit numbers with leading 0 trunk prefix', () => {
+      expect(normalizeIndianPhone('09825123456')).toEqual({ phone: '9825123456' });
+      expect(isValidIndianPhone('09825123456')).toBe(true);
+    });
+
+    it('strictly rejects excessively long numbers WITHOUT silent truncation', () => {
+      // Previously, slice(-10) silently converted this to 9825123456. Now must reject!
+      const longInput1 = '123459825123456';
+      expect(normalizeIndianPhone(longInput1).phone).toBeUndefined();
+      expect(normalizeIndianPhone(longInput1).error).toContain('too long');
+
+      const longInput2 = '98251234567'; // 11 digits without prefix
+      expect(normalizeIndianPhone(longInput2).phone).toBeUndefined();
+      expect(isValidIndianPhone(longInput2)).toBe(false);
+
+      const longInput3 = '+9198251234567'; // 11 digits after +91
+      expect(normalizeIndianPhone(longInput3).phone).toBeUndefined();
+      expect(isValidIndianPhone(longInput3)).toBe(false);
+    });
+
+    it('strictly rejects non-Indian international country codes', () => {
+      expect(normalizeIndianPhone('+14155552671').phone).toBeUndefined();
+      expect(normalizeIndianPhone('+14155552671').error).toContain('Only Indian mobile numbers (+91)');
+
+      expect(normalizeIndianPhone('+923001234567').phone).toBeUndefined();
+      expect(normalizeIndianPhone('+447911123456').phone).toBeUndefined();
+      expect(isValidIndianPhone('+14155552671')).toBe(false);
+    });
+
+    it('strictly rejects numbers starting with invalid digits (0-5)', () => {
+      expect(normalizeIndianPhone('5825123456').phone).toBeUndefined();
+      expect(normalizeIndianPhone('4825123456').phone).toBeUndefined();
+      expect(normalizeIndianPhone('1825123456').phone).toBeUndefined();
+      expect(isValidIndianPhone('5825123456')).toBe(false);
+    });
+
+    it('strictly rejects dummy and sequential placeholder numbers', () => {
+      expect(normalizeIndianPhone('9999999999').phone).toBeUndefined();
+      expect(normalizeIndianPhone('9999999999').error).toContain('Repetitive dummy phone');
+
+      expect(normalizeIndianPhone('8888888888').phone).toBeUndefined();
+      expect(normalizeIndianPhone('1234567890').phone).toBeUndefined();
+      expect(isValidIndianPhone('9999999999')).toBe(false);
+      expect(isValidIndianPhone('1234567890')).toBe(false);
+    });
+
+    it('strictly rejects non-numeric or malformed input', () => {
+      expect(normalizeIndianPhone('').phone).toBeUndefined();
+      expect(normalizeIndianPhone('abcdefghij').phone).toBeUndefined();
+      expect(normalizeIndianPhone('98251abcde').phone).toBeUndefined();
+      expect(normalizeIndianPhone(null).phone).toBeUndefined();
+      expect(normalizeIndianPhone(undefined).phone).toBeUndefined();
+    });
+  });
 });

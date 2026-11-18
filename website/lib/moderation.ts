@@ -47,33 +47,21 @@ export function validateContent(text: string): { isValid: boolean; reason?: stri
   return { isValid: true };
 }
 
+import { normalizeIndianPhone } from './validations';
+
 /**
  * Validates genuine Indian 10-digit mobile numbers
- * (Must start with 6, 7, 8, or 9 and cannot be repetitive dummy sequences)
+ * Accepts 10 digits starting with 6-9, +91, 91, or 0 prefixed.
+ * Rejects non-Indian codes, malformed strings, excessive digits, and dummy sequences.
  */
 export function validateIndianPhone(phone: string): { isValid: boolean; reason?: string } {
-  const clean = phone.replace(/\D/g, '').slice(-10);
-
-  if (clean.length !== 10) {
-    return {
-      isValid: false,
-      reason: 'Please enter a valid 10-digit Indian WhatsApp mobile number.',
-    };
+  const result = normalizeIndianPhone(phone);
+  if (result.error) {
+    return { isValid: false, reason: result.error };
   }
 
-  // Must start with 6, 7, 8, or 9
-  if (!/^[6-9]/.test(clean)) {
-    return {
-      isValid: false,
-      reason: 'Mobile number must start with 6, 7, 8, or 9.',
-    };
-  }
-
-  // Reject obvious fake/dummy numbers (e.g., 9999999999, 0000000000, 1234567890)
-  const isAllSameDigit = /^(\d)\1{9}$/.test(clean);
-  const isSequence = clean === '9876543210' || clean === '1234567890';
-
-  if (isAllSameDigit || isSequence) {
+  // Also reject the sequential placeholder 9876543210 if not already caught
+  if (result.phone === '9876543210') {
     return {
       isValid: false,
       reason: 'Please enter your actual active WhatsApp number, not a placeholder sequence.',
