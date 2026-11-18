@@ -164,10 +164,10 @@ export const ExpressInterestModal: React.FC<ExpressInterestModalProps> = ({
               Preferred Move-in Date
             </label>
             <input
-              type="text"
+              type="date"
+              min={new Date().toISOString().split('T')[0]}
               value={moveInDate}
               onChange={(e) => setMoveInDate(e.target.value)}
-              placeholder="e.g. Next Monday / Immediate / 1st of month"
               className="w-full px-3.5 py-2.5 rounded-xl border border-input text-xs font-semibold focus:border-primary outline-hidden"
             />
           </div>

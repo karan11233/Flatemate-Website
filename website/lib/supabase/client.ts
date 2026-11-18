@@ -1,12 +1,27 @@
 import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-export function createClient() {
+let client: SupabaseClient | null = null;
+
+export function createClient(): SupabaseClient | null {
+  if (typeof window === 'undefined') return null;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (
+    !supabaseUrl ||
+    !supabaseAnonKey ||
+    supabaseUrl.includes('placeholder') ||
+    supabaseUrl === 'https://your-project-id.supabase.co'
+  ) {
     return null;
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  if (!client) {
+    client = createBrowserClient(supabaseUrl, supabaseAnonKey);
+  }
+  return client;
 }
+
+export const getSupabaseBrowserClient = createClient;

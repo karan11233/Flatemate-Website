@@ -1,13 +1,13 @@
 'use server';
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateInquiryInput } from '@/lib/validations';
+import { validateInquiryInput, isValidUUID } from '@/lib/validations';
 import { INITIAL_MOCK_INQUIRIES } from '@/data/mockData';
 import { Inquiry } from '@/types';
 
 /**
  * Submit an inquiry for a space
- * Trigger automatically derives real host_id and seeker_id
+ * Database trigger automatically derives real host_id and seeker_id
  */
 export async function submitInquiryAction(payload: any): Promise<{ success: boolean; id?: string; error?: string }> {
   const validation = validateInquiryInput(payload);
@@ -15,10 +15,13 @@ export async function submitInquiryAction(payload: any): Promise<{ success: bool
     return { success: false, error: validation.error };
   }
 
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    // Local mock mode
-    return { success: true, id: `mock-inq-${Date.now()}` };
+    if (isDemoMode) {
+      return { success: true, id: `mock-inq-${Date.now()}` };
+    }
+    return { success: false, error: 'Database service is not configured' };
   }
 
   const { data: inserted, error } = await supabase
@@ -38,7 +41,11 @@ export async function submitInquiryAction(payload: any): Promise<{ success: bool
     return { success: false, error: error.message };
   }
 
-  return { success: true, id: inserted?.id };
+  if (!inserted?.id) {
+    return { success: false, error: 'Database did not return created inquiry ID' };
+  }
+
+  return { success: true, id: inserted.id };
 }
 
 /**
@@ -46,13 +53,17 @@ export async function submitInquiryAction(payload: any): Promise<{ success: bool
  * Strictly requires verified session. Zero unauthenticated phone-number lookup.
  */
 export async function getHostInquiriesAction(): Promise<{ data: Inquiry[]; error?: string }> {
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    return { data: INITIAL_MOCK_INQUIRIES };
+    if (isDemoMode) {
+      return { data: INITIAL_MOCK_INQUIRIES };
+    }
+    return { data: [], error: 'Database service is not configured' };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
     return { data: [], error: 'Authentication required to view host leads' };
   }
 
@@ -105,24 +116,35 @@ export async function updateInquiryStatusAction(
   inquiryId: string,
   newStatus: 'new' | 'contacted' | 'visited'
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isValidUUID(inquiryId)) {
+    return { success: false, error: 'Invalid inquiry ID' };
+  }
+
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    return { success: true };
+    if (isDemoMode) return { success: true };
+    return { success: false, error: 'Database service is not configured' };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Authentication required' };
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('inquiries')
     .update({ status: newStatus })
     .eq('id', inquiryId)
-    .eq('host_id', user.id);
+    .eq('host_id', user.id)
+    .select('id');
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  if (!data || data.length === 0) {
+    return { success: false, error: 'Inquiry not found or unauthorized to update' };
   }
 
   return { success: true };
@@ -135,27 +157,38 @@ export async function archiveInquiryAction(
   inquiryId: string,
   role: 'host' | 'seeker'
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) {
-    return { success: true };
+  if (!isValidUUID(inquiryId)) {
+    return { success: false, error: 'Invalid inquiry ID' };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) {
+    if (isDemoMode) return { success: true };
+    return { success: false, error: 'Database service is not configured' };
+  }
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Authentication required' };
   }
 
   const updatePayload = role === 'host' ? { host_archived: true } : { seeker_archived: true };
   const filterKey = role === 'host' ? 'host_id' : 'seeker_id';
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('inquiries')
     .update(updatePayload)
     .eq('id', inquiryId)
-    .eq(filterKey, user.id);
+    .eq(filterKey, user.id)
+    .select('id');
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  if (!data || data.length === 0) {
+    return { success: false, error: 'Inquiry not found or unauthorized to archive' };
   }
 
   return { success: true };

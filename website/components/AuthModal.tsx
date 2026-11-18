@@ -19,13 +19,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
 }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
-  const [identifier, setIdentifier] = useState(''); // email or mobile
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
 
   if (!isOpen) return null;
 
@@ -35,6 +37,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     if (password.length < 6) {
       setErrorMessage('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
 
@@ -55,9 +62,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
 
-        const loginIdentifier = identifier.trim() || phone.trim();
-        const { user, error } = await signUpUser({
-          emailOrPhone: loginIdentifier,
+        const { user, error, needsEmailVerification } = await signUpUser({
+          email: email.trim(),
           password,
           fullName: fullName.trim(),
           phone: phone.trim(),
@@ -69,20 +75,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
 
+        if (needsEmailVerification) {
+          setVerificationPending(true);
+          setVerificationEmail(email.trim());
+          setIsLoading(false);
+          return;
+        }
+
         if (user) {
           onSuccess(user);
           onClose();
         }
       } else {
         // Log In
-        if (!identifier.trim()) {
-          setErrorMessage('Please enter your email or 10-digit mobile number.');
-          setIsLoading(false);
-          return;
-        }
-
         const { user, error } = await signInUser({
-          emailOrPhone: identifier.trim(),
+          email: email.trim(),
           password,
         });
 
@@ -131,59 +138,91 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           <h3 className="font-heading text-xl font-bold text-slate-900 mt-2">
-            {mode === 'login' ? 'Welcome Back' : 'Create Your Flatemate Account'}
+            {verificationPending
+              ? 'Check Your Inbox'
+              : mode === 'login'
+              ? 'Welcome Back'
+              : 'Create Your Flatemate Account'}
           </h3>
 
           <p className="text-xs text-slate-600 mt-1">
-            {promptMessage || (mode === 'login' 
-              ? 'Log in to manage your spaces, inquiries, and verified connects.' 
-              : 'Sign up in 30 seconds to list spaces and connect directly with hosts.')}
+            {verificationPending
+              ? `We have sent a verification email to ${verificationEmail}. Please confirm it to complete login.`
+              : promptMessage || (mode === 'login' 
+                  ? 'Log in to manage your spaces, inquiries, and verified connects.' 
+                  : 'Sign up in 30 seconds to list spaces and connect directly with hosts.')}
           </p>
 
           {/* Mode Switcher Tabs */}
-          <div className="mt-4 grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl text-xs font-bold">
+          {!verificationPending && (
+            <div className="mt-4 grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorMessage(null);
+                }}
+                className={`py-2 rounded-lg transition-all cursor-pointer ${
+                  mode === 'login'
+                    ? 'bg-white text-primary shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Log In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setErrorMessage(null);
+                }}
+                className={`py-2 rounded-lg transition-all cursor-pointer ${
+                  mode === 'signup'
+                    ? 'bg-white text-primary shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Verification Success View */}
+        {verificationPending ? (
+          <div className="p-6 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <iconify-icon icon="lucide:mail-check" class="text-2xl"></iconify-icon>
+            </div>
+            <div>
+              <h4 className="font-heading font-bold text-slate-900 text-base">Verification Email Sent</h4>
+              <p className="text-xs text-slate-600 mt-1">
+                Please check your inbox at <strong className="text-slate-800">{verificationEmail}</strong> and click the confirmation link. After confirming, you can log in below.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => {
+                setVerificationPending(false);
                 setMode('login');
                 setErrorMessage(null);
               }}
-              className={`py-2 rounded-lg transition-all cursor-pointer ${
-                mode === 'login'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className="w-full py-3 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors"
             >
-              Log In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signup');
-                setErrorMessage(null);
-              }}
-              className={`py-2 rounded-lg transition-all cursor-pointer ${
-                mode === 'signup'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Sign Up
+              Back to Log In
             </button>
           </div>
-        </div>
+        ) : (
+          /* Form Body */
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-start gap-2 animate-in fade-in">
+                <iconify-icon icon="lucide:alert-circle" class="text-base shrink-0 mt-0.5"></iconify-icon>
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-start gap-2 animate-in fade-in">
-              <iconify-icon icon="lucide:alert-circle" class="text-base shrink-0 mt-0.5"></iconify-icon>
-              <span>{errorMessage}</span>
-            </div>
-          )}
-
-          {mode === 'signup' ? (
-            <>
+            {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">
                   Your Full Name *
@@ -197,7 +236,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
                 />
               </div>
+            )}
 
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Email Address *
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
+              />
+            </div>
+
+            {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">
                   WhatsApp / Mobile Number *
@@ -213,70 +268,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     className="w-full pl-11 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1">Used to alert you on WhatsApp and sync your listings.</p>
+                <p className="text-[10px] text-slate-500 mt-1">Used to alert you on WhatsApp and attach to your published listings.</p>
               </div>
-            </>
-          ) : (
-            <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1">
-                WhatsApp Mobile Number or Email *
-              </label>
-              <input
-                type="text"
-                required
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. 9876543210 or your email"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
-              />
-            </div>
-          )}
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-slate-800">
-                Password *
-              </label>
-              <span className="text-[10px] text-slate-400 font-medium">Min 6 characters</span>
-            </div>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-              >
-                <iconify-icon icon={showPassword ? 'lucide:eye-off' : 'lucide:eye'} class="text-base"></iconify-icon>
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="mt-2 min-h-12 w-full rounded-xl bg-primary text-sm font-bold text-white shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isLoading ? (
-              <>
-                <iconify-icon icon="lucide:loader-2" class="text-base animate-spin"></iconify-icon>
-                <span>Please wait...</span>
-              </>
-            ) : (
-              <span>{mode === 'login' ? 'Log In to Flatemate' : 'Create Account'}</span>
             )}
-          </button>
 
-          <p className="text-[11px] text-slate-500 text-center pt-2">
-            By continuing, you agree to Flatemate's Zero Brokerage Policy and Safety Guidelines.
-          </p>
-        </form>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-800">
+                  Password *
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">Min 6 characters</span>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                >
+                  <iconify-icon icon={showPassword ? 'lucide:eye-off' : 'lucide:eye'} class="text-base"></iconify-icon>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="mt-2 min-h-12 w-full rounded-xl bg-primary text-sm font-bold text-white shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isLoading ? (
+                <>
+                  <iconify-icon icon="lucide:loader-2" class="text-base animate-spin"></iconify-icon>
+                  <span>Please wait...</span>
+                </>
+              ) : (
+                <span>{mode === 'login' ? 'Log In to Flatemate' : 'Create Account'}</span>
+              )}
+            </button>
+
+            <p className="text-[11px] text-slate-500 text-center pt-2">
+              By continuing, you agree to Flatemate's Zero Brokerage Policy and Safety Guidelines.
+            </p>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use server';
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateSpaceInput } from '@/lib/validations';
+import { validateSpaceInput, isValidUUID } from '@/lib/validations';
 import { INITIAL_MOCK_SPACES } from '@/data/mockData';
 import { SpaceListing } from '@/types';
 
@@ -9,11 +9,15 @@ import { SpaceListing } from '@/types';
  * Fetch public listings from the sanitized public_spaces view
  */
 export async function getPublicSpacesAction(): Promise<{ data: SpaceListing[]; error?: string }> {
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
+
   try {
     const supabase = await createServerSupabaseClient();
     if (!supabase) {
-      // Local development fallback
-      return { data: INITIAL_MOCK_SPACES };
+      if (isDemoMode) {
+        return { data: INITIAL_MOCK_SPACES };
+      }
+      return { data: [], error: 'Database service is not configured' };
     }
 
     const { data, error } = await supabase
@@ -22,8 +26,11 @@ export async function getPublicSpacesAction(): Promise<{ data: SpaceListing[]; e
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('Supabase fetch failed, using fallback:', error.message);
-      return { data: INITIAL_MOCK_SPACES };
+      console.error('Supabase fetch failed:', error.message);
+      if (isDemoMode) {
+        return { data: INITIAL_MOCK_SPACES, error: error.message };
+      }
+      return { data: [], error: error.message };
     }
 
     // Map database rows to UI SpaceListing interface
@@ -48,9 +55,13 @@ export async function getPublicSpacesAction(): Promise<{ data: SpaceListing[]; e
       createdAt: row.created_at,
     }));
 
-    return { data: mapped.length > 0 ? mapped : INITIAL_MOCK_SPACES };
+    // Successful query returning zero spaces returns empty array
+    return { data: mapped };
   } catch (err: any) {
-    return { data: INITIAL_MOCK_SPACES, error: err.message };
+    if (isDemoMode) {
+      return { data: INITIAL_MOCK_SPACES, error: err.message };
+    }
+    return { data: [], error: err.message };
   }
 }
 
@@ -64,9 +75,13 @@ export async function createSpaceAction(payload: any): Promise<{ success: boolea
     return { success: false, error: validation.error };
   }
 
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    return { success: true, id: `mock-${Date.now()}` };
+    if (isDemoMode) {
+      return { success: true, id: `mock-${Date.now()}` };
+    }
+    return { success: false, error: 'Database service is not configured' };
   }
 
   // Security Invariant: Require authenticated session
@@ -106,7 +121,11 @@ export async function createSpaceAction(payload: any): Promise<{ success: boolea
     return { success: false, error: insertError.message };
   }
 
-  return { success: true, id: inserted?.id };
+  if (!inserted?.id) {
+    return { success: false, error: 'Database did not return created listing ID' };
+  }
+
+  return { success: true, id: inserted.id };
 }
 
 /**
@@ -116,24 +135,35 @@ export async function updateSpaceStatusAction(
   spaceId: string,
   newStatus: 'active' | 'rented' | 'paused'
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isValidUUID(spaceId)) {
+    return { success: false, error: 'Invalid space ID' };
+  }
+
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    return { success: true };
+    if (isDemoMode) return { success: true };
+    return { success: false, error: 'Database service is not configured' };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Authentication required' };
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('spaces')
     .update({ status: newStatus })
     .eq('id', spaceId)
-    .eq('user_id', user.id);
+    .eq('user_id', user.id)
+    .select('id');
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  if (!data || data.length === 0) {
+    return { success: false, error: 'Space not found or unauthorized to update status' };
   }
 
   return { success: true };
@@ -146,15 +176,22 @@ export async function incrementSpaceViewsAction(
   spaceId: string,
   viewerToken?: string
 ): Promise<{ success: boolean }> {
+  if (!isValidUUID(spaceId)) {
+    return { success: false };
+  }
+
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     return { success: true };
   }
 
-  await supabase.rpc('increment_space_views', {
-    p_space_id: spaceId,
-    p_viewer_token: viewerToken || null,
-  });
-
-  return { success: true };
+  try {
+    await supabase.rpc('increment_space_views', {
+      p_space_id: spaceId,
+      p_viewer_token: viewerToken || null,
+    });
+    return { success: true };
+  } catch {
+    return { success: false };
+  }
 }

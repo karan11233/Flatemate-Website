@@ -28,28 +28,8 @@ import {
 } from '@/lib/moderation';
 
 export default function App() {
-  // Seamless Device Auth State (Frictionless guest identity)
-  const [currentUser, setCurrentUser] = useState<AuthUser>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('flatemate_user');
-        if (saved) return JSON.parse(saved);
-      } catch {}
-      const deviceId = getOrCreateDeviceUserId();
-      const savedName = localStorage.getItem('flatemate_user_name') || '';
-      const savedPhone = localStorage.getItem('flatemate_user_phone') || '';
-      return {
-        id: deviceId,
-        fullName: savedName || '',
-        phone: savedPhone,
-      };
-    }
-    return {
-      id: 'usr_default',
-      fullName: '',
-      phone: '',
-    };
-  });
+  // Genuine Supabase Auth User State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authPromptMessage, setAuthPromptMessage] = useState('');
   const [onAuthSuccessCallback, setOnAuthSuccessCallback] = useState<(() => void) | null>(null);
@@ -169,14 +149,7 @@ export default function App() {
           }
           if (u.fullName) setHostName(u.fullName);
         } else {
-          const deviceId = getOrCreateDeviceUserId();
-          const savedName = localStorage.getItem('flatemate_user_name') || '';
-          const savedPhone = localStorage.getItem('flatemate_user_phone') || '';
-          setCurrentUser({
-            id: deviceId,
-            fullName: savedName,
-            phone: savedPhone,
-          });
+          setCurrentUser(null);
         }
       });
       return () => subscription.unsubscribe();
@@ -185,17 +158,10 @@ export default function App() {
 
   const handleSignOut = async () => {
     await signOutUser();
-    localStorage.removeItem('flatemate_user');
-    localStorage.removeItem('flatemate_user_name');
-    localStorage.removeItem('flatemate_user_phone');
-    const deviceId = getOrCreateDeviceUserId();
-    setCurrentUser({
-      id: deviceId,
-      fullName: '',
-      phone: '',
-    });
+    setCurrentUser(null);
     setHostName('');
     setHostPhone('');
+    setCurrentHostPhone('');
   };
 
   // Saved Listings
@@ -249,59 +215,43 @@ export default function App() {
     });
   };
 
-  // Real Spaces (starts with authentic mock spaces or loads from clean localStorage)
+  // Real Spaces
   const [spaces, setSpaces] = useState<SpaceListing[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('flatemate_spaces_data');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
+    if (process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
+      return INITIAL_MOCK_SPACES;
     }
-    return INITIAL_MOCK_SPACES;
+    return [];
   });
-
-  useEffect(() => {
-    localStorage.setItem('flatemate_spaces_data', JSON.stringify(spaces));
-  }, [spaces]);
 
   // Real Inquiries
   const [inquiries, setInquiries] = useState<Inquiry[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('flatemate_inquiries_data');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
+    if (process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true') {
+      return INITIAL_MOCK_INQUIRIES;
     }
-    return INITIAL_MOCK_INQUIRIES;
+    return [];
   });
-
-  useEffect(() => {
-    localStorage.setItem('flatemate_inquiries_data', JSON.stringify(inquiries));
-  }, [inquiries]);
 
   // Sync Cloud Data from Supabase on Load (Direct database source of truth)
   useEffect(() => {
     async function initCloudSync() {
-      if (!isSupabaseConfigured) return;
-      
-      const cloudSpaces = await getCloudSpaces();
-      if (cloudSpaces) {
-        setSpaces(cloudSpaces);
+      try {
+        const cloudSpaces = await getCloudSpaces();
+        setSpaces(cloudSpaces || []);
+      } catch (e) {
+        console.error('Failed to load spaces from database:', e);
       }
 
-      const cloudInquiries = await getCloudInquiries();
-      if (cloudInquiries) {
-        setInquiries(cloudInquiries);
+      if (currentUser?.id) {
+        try {
+          const cloudInquiries = await getCloudInquiries();
+          setInquiries(cloudInquiries || []);
+        } catch (e) {
+          console.error('Failed to load inquiries from database:', e);
+        }
       }
     }
     initCloudSync();
-  }, []);
+  }, [currentUser?.id]);
 
   // Filter Spaces (Bifurcated by category: All / Full Vacant Flats / Flatmate Replacements)
   const filteredSpaces = spaces.filter((item) => {
@@ -330,7 +280,7 @@ export default function App() {
   });
 
   // Handle Seeker "Express Interest" via Direct Card Popup
-  const handleModalInterestSubmit = (data: {
+  const handleModalInterestSubmit = async (data: {
     seekerName: string;
     seekerPhone: string;
     moveInDate: string;
@@ -340,7 +290,7 @@ export default function App() {
     const targetSpace = interestModalSpace;
 
     const newInquiry: Inquiry = {
-      id: `inq-${Date.now()}`,
+      id: '',
       spaceId: targetSpace.id,
       hostId: targetSpace.userId,
       seekerId: currentUser?.id,
@@ -349,16 +299,20 @@ export default function App() {
       hostPhone: targetSpace.hostPhone || '',
       seekerName: data.seekerName,
       seekerPhone: data.seekerPhone,
-      moveInDate: data.moveInDate || 'Immediate',
+      moveInDate: data.moveInDate || '',
       note: data.note,
       timestamp: 'Just now',
       status: 'new',
     };
 
-    setInquiries([newInquiry, ...inquiries]);
-    if (isSupabaseConfigured) {
-      insertCloudInquiry(newInquiry);
+    const res = await insertCloudInquiry(newInquiry);
+    if (!res.success) {
+      alert(`Could not submit inquiry: ${res.error || 'Server error. Please try again.'}`);
+      return;
     }
+
+    newInquiry.id = res.id || `inq-${Date.now()}`;
+    setInquiries([newInquiry, ...inquiries]);
     localStorage.setItem('flatemate_user_name', data.seekerName.trim());
     localStorage.setItem('flatemate_user_phone', data.seekerPhone.trim());
     setLastSubmittedSpace(targetSpace);
@@ -370,8 +324,14 @@ export default function App() {
   };
 
   // Handle Host & Seeker Submission (Fresh Flat, Replacement, or Seeker Requirement)
-  const handleListSpaceSubmit = (e: React.FormEvent) => {
+  const handleListSpaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!currentUser || !currentUser.email) {
+      setAuthPromptMessage('Please log in or create an account to list your space on Flatemate.');
+      setIsAuthModalOpen(true);
+      return;
+    }
 
     if (!spaceRent || !spaceLocation || !hostName || !hostPhone) {
       alert('Please fill out the rent/budget, location, your name, and WhatsApp number.');
@@ -451,28 +411,31 @@ export default function App() {
       seekerProfession: seekerProfession,
     };
 
-    setSpaces([newListing, ...spaces]);
-    if (isSupabaseConfigured) {
-      insertCloudSpace(newListing);
+    const res = await insertCloudSpace(newListing);
+    if (!res.success) {
+      alert(`Could not create listing: ${res.error || 'Server error. Please try again.'}`);
+      return;
     }
+
+    newListing.id = res.id || `space-${Date.now()}`;
+    setSpaces([newListing, ...spaces]);
     recordPostTimestamp();
     setCurrentHostPhone(cleanHostPhone);
-    localStorage.setItem('flatemate_user_name', hostName.trim());
-    localStorage.setItem('flatemate_user_phone', cleanHostPhone);
-    setCurrentUser(prev => ({
-      id: prev?.id || getOrCreateDeviceUserId(),
-      fullName: hostName.trim(),
-      phone: cleanHostPhone,
-    }));
     setUploadedPhotos([]);
     setSpaceDescription('');
     setListingSubmitted(true);
   };
 
   // Toggle Listing Status (Active vs Rented)
-  const handleToggleListingStatus = (spaceId: string) => {
+  const handleToggleListingStatus = async (spaceId: string) => {
     const target = spaces.find((s) => s.id === spaceId);
     const updatedStatus = target?.status === 'rented' ? 'active' : 'rented';
+
+    const res = await updateCloudSpaceStatus(spaceId, updatedStatus);
+    if (!res.success) {
+      alert(`Could not update listing status: ${res.error || 'Unauthorized or server error'}`);
+      return;
+    }
 
     setSpaces((prev) =>
       prev.map((s) => {
@@ -485,25 +448,23 @@ export default function App() {
         return s;
       })
     );
-    if (isSupabaseConfigured) {
-      updateCloudSpaceStatus(spaceId, updatedStatus);
-    }
   };
 
   // Update Inquiry Status
-  const handleUpdateInquiryStatus = (inquiryId: string, status: 'new' | 'contacted' | 'visited') => {
+  const handleUpdateInquiryStatus = async (inquiryId: string, status: 'new' | 'contacted' | 'visited') => {
+    const res = await updateCloudInquiryStatus(inquiryId, status);
+    if (!res.success) {
+      console.warn('Inquiry status update failed:', res.error);
+    }
     setInquiries((prev) =>
       prev.map((inq) => (inq.id === inquiryId ? { ...inq, status } : inq))
     );
-    if (isSupabaseConfigured && status !== 'visited') {
-      updateCloudInquiryStatus(inquiryId, status);
-    }
   };
 
-  // Total Inquiries count for the active host phone
-  const activeHostInquiriesCount = inquiries.filter(
-    (inq) => inq.hostPhone && inq.hostPhone.replace(/\D/g, '').endsWith(currentHostPhone.replace(/\D/g, '').slice(-10))
-  ).length;
+  // Total Inquiries count for the authenticated host
+  const activeHostInquiriesCount = currentUser?.id
+    ? inquiries.filter((inq) => inq.hostId === currentUser.id).length
+    : 0;
 
   return (
     <div className="min-h-screen w-full bg-background flex flex-col relative font-sans text-foreground">
@@ -530,7 +491,7 @@ export default function App() {
 
           <div className="flex items-center gap-2 sm:gap-3">
             {/* User Account Button */}
-            {currentUser && (currentUser.fullName || currentUser.phone) ? (
+            {currentUser && currentUser.email ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
