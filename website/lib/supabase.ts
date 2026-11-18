@@ -179,15 +179,25 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 /**
- * Fetch spaces (Server Action)
+ * Fetch spaces (Server Action with transparent error reporting)
  */
-export async function getCloudSpaces(): Promise<SpaceListing[]> {
+export async function getCloudSpaces(): Promise<{ data: SpaceListing[]; error?: string }> {
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   try {
     const res = await getPublicSpacesAction();
-    return res.data || [];
-  } catch {
-    const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
-    return isDemoMode ? INITIAL_MOCK_SPACES : [];
+    if (res.error) {
+      if (isDemoMode) {
+        return { data: INITIAL_MOCK_SPACES, error: res.error };
+      }
+      return { data: [], error: res.error };
+    }
+    return { data: res.data || [] };
+  } catch (err: any) {
+    const errMsg = err?.message || 'Failed to retrieve spaces';
+    if (isDemoMode) {
+      return { data: INITIAL_MOCK_SPACES, error: errMsg };
+    }
+    return { data: [], error: errMsg };
   }
 }
 
@@ -197,6 +207,11 @@ export async function getCloudSpaces(): Promise<SpaceListing[]> {
 export async function insertCloudSpace(
   space: SpaceListing
 ): Promise<{ success: boolean; id?: string; error?: string }> {
+  const cleanPhone = (space.hostPhone || '').replace(/\D/g, '').slice(-10);
+  if (cleanPhone.length !== 10) {
+    return { success: false, error: 'A valid 10-digit Indian mobile number is required to list a space.' };
+  }
+
   try {
     const res = await createSpaceAction({
       title: space.type,
@@ -211,7 +226,7 @@ export async function insertCloudSpace(
       amenities: space.amenities || [],
       images: space.image ? [space.image] : [],
       contactName: space.hostName || 'Host',
-      contactPhone: space.hostPhone || '9876543210',
+      contactPhone: cleanPhone,
       consentWhatsappContact: false, // Default opt-in: false
     });
     return res;
@@ -236,15 +251,25 @@ export async function updateCloudSpaceStatus(
 }
 
 /**
- * Fetch inquiries (Server Action)
+ * Fetch inquiries (Server Action with transparent error reporting)
  */
-export async function getCloudInquiries(): Promise<Inquiry[]> {
+export async function getCloudInquiries(): Promise<{ data: Inquiry[]; error?: string }> {
+  const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
   try {
     const res = await getHostInquiriesAction();
-    return (res.data as any) || [];
-  } catch {
-    const isDemoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true';
-    return isDemoMode ? INITIAL_MOCK_INQUIRIES : [];
+    if (res.error) {
+      if (isDemoMode) {
+        return { data: INITIAL_MOCK_INQUIRIES, error: res.error };
+      }
+      return { data: [], error: res.error };
+    }
+    return { data: (res.data as any) || [] };
+  } catch (err: any) {
+    const errMsg = err?.message || 'Failed to retrieve inquiries';
+    if (isDemoMode) {
+      return { data: INITIAL_MOCK_INQUIRIES, error: errMsg };
+    }
+    return { data: [], error: errMsg };
   }
 }
 

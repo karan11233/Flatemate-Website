@@ -175,23 +175,28 @@ export async function updateSpaceStatusAction(
 export async function incrementSpaceViewsAction(
   spaceId: string,
   viewerToken?: string
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; error?: string }> {
   if (!isValidUUID(spaceId)) {
-    return { success: false };
+    return { success: false, error: 'Invalid space ID' };
   }
 
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    return { success: true };
+    return { success: false, error: 'Database service is not configured' };
   }
 
   try {
-    await supabase.rpc('increment_space_views', {
+    const { error } = await supabase.rpc('increment_space_views', {
       p_space_id: spaceId,
       p_viewer_token: viewerToken || null,
     });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
     return { success: true };
-  } catch {
-    return { success: false };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to increment view counter' };
   }
 }

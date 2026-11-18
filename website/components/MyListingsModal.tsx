@@ -22,6 +22,7 @@ interface MyListingsModalProps {
   onClose: () => void;
   spaces: SpaceListing[];
   inquiries: Inquiry[];
+  inquiriesError?: string | null;
   currentPhone?: string;
   setCurrentPhone?: (phone: string) => void;
   currentUser?: AuthUser | null;
@@ -36,6 +37,7 @@ export const MyListingsModal: React.FC<MyListingsModalProps> = ({
   onClose,
   spaces,
   inquiries,
+  inquiriesError,
   currentUser,
   onOpenAuth,
   onSignOut,
@@ -52,10 +54,9 @@ export const MyListingsModal: React.FC<MyListingsModalProps> = ({
     ? spaces.filter((s) => s.userId === currentUser?.id)
     : [];
 
-  // Filter inquiries received for this host's listings
-  const hostListingIds = hostListings.map((s) => s.id);
+  // Filter inquiries received strictly for this authenticated host
   const hostInquiries = isAuthenticated
-    ? inquiries.filter((inq) => inq.hostId === currentUser?.id || hostListingIds.includes(inq.spaceId))
+    ? inquiries.filter((inq) => inq.hostId === currentUser?.id)
     : [];
 
   return (
@@ -151,6 +152,14 @@ export const MyListingsModal: React.FC<MyListingsModalProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* Inquiries Fetch Error Notice */}
+              {inquiriesError && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <iconify-icon icon="lucide:alert-circle" class="text-base text-rose-600 shrink-0"></iconify-icon>
+                  <span>Failed to load leads from database: {inquiriesError}</span>
+                </div>
+              )}
 
               {/* SECTION 1: INCOMING INQUIRIES FEED */}
               <div>

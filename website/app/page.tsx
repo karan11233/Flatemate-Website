@@ -230,23 +230,35 @@ export default function App() {
     }
     return [];
   });
+  const [spacesError, setSpacesError] = useState<string | null>(null);
+  const [inquiriesError, setInquiriesError] = useState<string | null>(null);
 
   // Sync Cloud Data from Supabase on Load (Direct database source of truth)
   useEffect(() => {
     async function initCloudSync() {
       try {
         const cloudSpaces = await getCloudSpaces();
-        setSpaces(cloudSpaces || []);
-      } catch (e) {
-        console.error('Failed to load spaces from database:', e);
+        if (cloudSpaces.error) {
+          setSpacesError(cloudSpaces.error);
+        } else {
+          setSpacesError(null);
+        }
+        setSpaces(cloudSpaces.data || []);
+      } catch (e: any) {
+        setSpacesError(e?.message || 'Failed to load spaces from database');
       }
 
       if (currentUser?.id) {
         try {
           const cloudInquiries = await getCloudInquiries();
-          setInquiries(cloudInquiries || []);
-        } catch (e) {
-          console.error('Failed to load inquiries from database:', e);
+          if (cloudInquiries.error) {
+            setInquiriesError(cloudInquiries.error);
+          } else {
+            setInquiriesError(null);
+          }
+          setInquiries(cloudInquiries.data || []);
+        } catch (e: any) {
+          setInquiriesError(e?.message || 'Failed to load inquiries from database');
         }
       }
     }
@@ -989,6 +1001,14 @@ export default function App() {
                 </button>
               ))}
             </div>
+
+            {/* Spaces Error Notice */}
+            {spacesError && (
+              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs font-semibold flex items-center gap-2.5">
+                <iconify-icon icon="lucide:alert-triangle" class="text-lg text-amber-600 shrink-0"></iconify-icon>
+                <span>Database Notice: {spacesError}</span>
+              </div>
+            )}
 
             {/* Spaces Grid or Empty State */}
             {filteredSpaces.length === 0 ? (
@@ -2605,6 +2625,7 @@ export default function App() {
         onClose={() => setIsMyListingsOpen(false)}
         spaces={spaces}
         inquiries={inquiries}
+        inquiriesError={inquiriesError}
         currentPhone={currentHostPhone}
         setCurrentPhone={setCurrentHostPhone}
         currentUser={currentUser}

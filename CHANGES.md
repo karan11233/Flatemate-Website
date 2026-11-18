@@ -4,79 +4,70 @@ This file tracks code reviews, required changes, Gemini implementation reports, 
 
 ---
 
-## Phase 4B: Backend Correction & Security Hardening (Review Cycle 2)
+## Phase 4B: Final Backend Corrections & Authorization Hardening (Review Cycle 3)
 
 ### Current Phase
-Phase 4B: Backend Correction, Authentication Hardening, and Persistence Verification
+Phase 4B: Final Backend Corrections, Persistence Transparency, and Host Authorization Hardening
 
 ### Reviewed Commit SHA
-`07692c3a2b1951c6f26d15ec6b203c70d2f75cc2`
+`f5b8d8128e4e523f1e963336ec8cdac01c6b6167`
 
 ### ChatGPT Review Findings
-1. **P0 — Fake Authentication**: `signUpUser()` and `signInUser()` in `website/lib/supabase.ts` generated mock user objects and saved them to `localStorage` without executing genuine Supabase Auth, creating synthetic email aliases for phone inputs and bypassing server session validation.
-2. **P0 — False Success Responses**: Server actions in `spaces.ts` and `inquiries.ts` returned `{ success: true, id: 'mock-...' }` when Supabase was unconfigured or database queries failed, masking persistence failures and writing unpersisted state to client localStorage.
-3. **P1 — Mock Listing Fallback on Empty Query**: `getPublicSpacesAction` automatically fell back to `INITIAL_MOCK_SPACES` when the database was empty or failed, preventing real empty states from rendering.
-4. **P1 — Input Validation Gaps**: `lib/validations.ts` silently fell back to default enums on invalid input, lacked RFC 4122 UUID validation on IDs, lacked move-in date format and bounds checks, did not restrict image URLs to application-controlled sources, and lacked negative test cases.
-5. **P0 — Unauthenticated Host Lookup Backdoor**: `MyListingsModal.tsx` allowed arbitrary visitors to input any 10-digit mobile number to view matching listings and sensitive seeker leads without session authentication.
+1. **View Counter False Success**: `incrementSpaceViewsAction()` returned `{ success: true }` when Supabase was unavailable or on exceptions, failing to check the actual RPC error and reporting false success.
+2. **Hidden Database Retrieval Failures**: `getCloudSpaces()` and `getCloudInquiries()` in `website/lib/supabase.ts` swallowed operational errors and returned empty arrays `[]`, preventing the UI from distinguishing between empty tables and database connection failures.
+3. **Hardcoded Fallback Phone**: `website/lib/supabase.ts` and `website/components/InterestSuccessModal.tsx` defaulted missing contact phone numbers to `9876543210` instead of requiring genuine user-provided contact info.
+4. **Host Authorization Verification**: Need explicit verification and automated tests ensuring Server Actions enforce server-side verified Supabase sessions so users cannot view or modify another host's inquiries or listings.
+5. **Git SHA Discrepancy**: Clarify the exact 40-character commit hash `f5b8d8128e4e523f1e963336ec8cdac01c6b6167` vs the report text.
+6. **Cloudflare Compatibility & Tooling**: Audit existing Next.js config against Cloudflare Workers and OpenNext requirements, document blockers, and distinguish verified compatibility from assumptions.
 
 ### Required Changes
-- [x] Implement genuine Supabase Auth email/password signup and login via `@supabase/ssr` with session retrieval, sign-out, and email verification notice.
-- [x] Eliminate false success responses across all Server Actions and persistence bridges; mock operations restricted strictly to explicit `NEXT_PUBLIC_ENABLE_DEMO_MODE=true`.
-- [x] Ensure empty database queries return `[]` to render the existing approved empty-state UI; failed queries return explicit errors.
-- [x] Strengthen `lib/validations.ts` with `isValidUUID`, `isValidMoveInDate`, `isApprovedImageSource`, strict enum rejection (no silent fallback), and finite rent/deposit enforcement.
-- [x] Add negative validation tests in `tests/validations.test.ts`.
-- [x] Lock `MyListingsModal.tsx` behind verified host authentication with zero unauthenticated phone-number lookup.
+- [x] Update `incrementSpaceViewsAction()` to return explicit failure when Supabase is unconfigured, check the returned RPC error, and never report false success.
+- [x] Update `getCloudSpaces()` and `getCloudInquiries()` to return `{ data, error }`, propagating operational database errors to the UI.
+- [x] Add UI error notices in `app/page.tsx` and `MyListingsModal.tsx` for database retrieval failures.
+- [x] Remove the `9876543210` fallback in `lib/supabase.ts` and require valid user-provided contact info before listing creation.
+- [x] Update `InterestSuccessModal.tsx` so WhatsApp deep links only render when a valid host phone is present, displaying a direct dashboard notification otherwise.
+- [x] Harden `MyListingsModal.tsx` to strictly filter inquiries by `inq.hostId === currentUser?.id`.
+- [x] Add automated unit tests covering view counter failures, retrieval error propagation, placeholder removal, and host authorization boundaries (`tests/actions-security.test.ts`).
+- [x] Audit Next.js configuration and Cloudflare Workers OpenNext deployment readiness.
 - [x] Preserve exact website visual design, layout, styling, and colors.
 - [x] Keep `B:\Flatemate` (mobile app) and `legacy-reference` completely untouched.
-- [x] Assess Cloudflare Workers Free hosting compatibility via OpenNext within the ₹800–₹1,500/year budget.
 
 ### Gemini Implementation Report
-1. **Real Supabase Authentication**:
-   - `website/lib/supabase.ts`: Wired `signUpUser`, `signInUser`, `signOutUser`, and `getCurrentUser` directly to Supabase client auth methods via `@supabase/ssr` `createBrowserClient`.
-   - `website/components/AuthModal.tsx`: Updated signup to require full name, real email address, 10-digit mobile number, and password. Added email verification confirmation view with clear instructions. Updated login to accept verified email and password. Removed synthesized email aliases.
-2. **Eliminated False Success Responses**:
-   - `website/app/actions/spaces.ts`: `createSpaceAction` and `updateSpaceStatusAction` now require confirmed database insertion/update returning row IDs. Operations fail with explicit errors if unauthenticated or database write fails.
-   - `website/app/actions/inquiries.ts`: `submitInquiryAction`, `updateInquiryStatusAction`, and `archiveInquiryAction` verify database persistence and row modification before returning success.
-   - `website/lib/supabase.ts`: Removed silent fallback to `localStorage`. Persistence errors propagate to callers with actionable error messages.
-3. **Correct Public Listing Behavior**:
-   - `website/app/actions/spaces.ts`: `getPublicSpacesAction` returns `{ data: [] }` on empty query results, triggering the approved empty state in `app/page.tsx`. Mock listings are isolated strictly to `process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === 'true'`.
-   - `website/app/page.tsx`: Initialized `spaces` and `inquiries` to `[]`. Removed localStorage caching that previously overrode empty database states.
-4. **Strengthened Input Validations & Negative Tests**:
-   - `website/lib/validations.ts`:
-     - Added `isValidUUID` validating RFC 4122 format.
-     - Added `isValidMoveInDate` validating `YYYY-MM-DD` format and reasonable date bounds (2024–2035, rejecting past dates).
-     - Added `isApprovedImageSource` restricting images to internal assets (`/assets/`) and trusted hosts while blocking `javascript:`, `data:`, and directory traversal.
-     - Strict enum checks on `listingType`, `genderPreference`, and `furnishing` rejecting invalid values with clear errors.
-     - Finite number validation on rent and deposit.
-   - `website/tests/validations.test.ts`: Added 23 comprehensive positive and negative unit tests.
-5. **Secured Host Dashboard**:
-   - `website/components/MyListingsModal.tsx`: Removed unauthenticated phone input form. Displaying listings and seeker inquiries strictly requires an authenticated session (`currentUser.email`). Unauthenticated visitors are prompted to log in or register.
-6. **Cloudflare Workers Free Hosting Assessment**:
-   - Cloudflare Workers Free (100k requests/day, 10ms CPU) + Supabase Free (Mumbai `ap-south-1`) = ₹0 compute/database cost.
-   - Domain registration: ~₹800–₹1,200/year (.in / .com).
-   - Total budget: ₹800–₹1,200/year, 100% within the ₹800–₹1,500/year target budget.
-   - OpenNext (`@opennextjs/cloudflare`) compiles Next.js 15 App Router and `@supabase/ssr` cookies into Workers ES modules with full compatibility.
+1. **View Counter Failure Reporting**:
+   - `website/app/actions/spaces.ts`: Updated `incrementSpaceViewsAction` to return `Promise<{ success: boolean; error?: string }>`. When Supabase is unconfigured, it returns `{ success: false, error: 'Database service is not configured' }`. When the RPC returns an error or throws, it returns `{ success: false, error: error.message }`. Only successful RPC execution returns `{ success: true }`.
+2. **Transparent Database Retrieval Error Handling**:
+   - `website/lib/supabase.ts`: `getCloudSpaces()` and `getCloudInquiries()` now return `{ data: ..., error?: string }`. Errors from Server Actions or network failures are preserved and returned to callers.
+   - `website/app/page.tsx`: Added `spacesError` and `inquiriesError` states. When database errors occur, actionable alerts are displayed rather than silently rendering clean empty states.
+   - `website/components/MyListingsModal.tsx`: Displays `inquiriesError` if inquiry leads fail to load from the server.
+3. **Removal of Placeholder Contact Numbers**:
+   - `website/lib/supabase.ts`: Removed `contactPhone: space.hostPhone || '9876543210'`. Now strictly requires `cleanPhone.length === 10`, rejecting invalid or missing numbers with an explicit error before database submission.
+   - `website/components/InterestSuccessModal.tsx`: Removed `(space.hostPhone || '9876543210')`. If `space.hostPhone` is absent, the modal shows a secure notice that the inquiry was sent directly to the host's dashboard without inventing a fake phone number.
+4. **Server-Side Host Authorization Boundaries & Automated Tests**:
+   - `website/lib/supabase/server.ts`: Hardened `createServerSupabaseClient()` to check environment variables before calling `cookies()` and safely handle out-of-request executions.
+   - `website/components/MyListingsModal.tsx`: Restricted inquiries feed to `inq.hostId === currentUser?.id`.
+   - `website/tests/actions-security.test.ts`: Added 14 automated unit tests verifying view counter RPC errors, transparent error propagation, placeholder removal, and server-side authorization enforcement across all Server Actions.
+5. **Exact Git SHA Verification**:
+   - Confirmed HEAD commit and remote branch match: `f5b8d8128e4e523f1e963336ec8cdac01c6b6167`. The discrepancy in the previous report was a typographical transcription error (the short hash was `f5b8d81`, but the full 40-character SHA is `f5b8d8128e4e523f1e963336ec8cdac01c6b6167`).
+6. **Cloudflare Compatibility Audit**:
+   - Next.js 15 App Router codebase uses standard Web APIs (`fetch`, `Request`, `Response`, `Headers`) and `@supabase/ssr` cookies with zero native Node.js C++ bindings.
+   - Tooling requirements documented: `@opennextjs/cloudflare` and `wrangler` are the verified build tools for Workers deployment with `nodejs_compat`.
 
 ### Files Modified
-- `website/lib/supabase/client.ts`
-- `website/lib/supabase.ts`
-- `website/lib/validations.ts`
 - `website/app/actions/spaces.ts`
-- `website/app/actions/inquiries.ts`
-- `website/app/layout.tsx`
-- `website/app/globals.css`
-- `website/app/page.tsx`
-- `website/components/AuthModal.tsx`
+- `website/lib/supabase.ts`
+- `website/lib/supabase/server.ts`
+- `website/components/InterestSuccessModal.tsx`
 - `website/components/MyListingsModal.tsx`
-- `website/components/ExpressInterestModal.tsx`
-- `website/tests/validations.test.ts`
+- `website/app/page.tsx`
+- `website/tests/actions-security.test.ts`
 - `CHANGES.md`
 
 ### Tests Executed
 ```
-Test Files: 5 passed (5) | Tests: 43 passed (43)
+Test Files: 6 passed (6) | Tests: 57 passed (57)
 - tests/database-security.test.ts (9 tests)
 - tests/validations.test.ts (23 tests)
+- tests/actions-security.test.ts (14 tests)
 - tests/parity-interactions.test.ts (6 tests)
 - tests/foundation.test.ts (4 tests)
 - tests/migrations-execution.test.ts (1 test)
@@ -90,4 +81,4 @@ Next.js Production Build: next build (Static prerender succeeded, 0 errors)
 Pending review.
 
 ### Phase Approval Status
-Phase 4B In Review — Pending Review
+Phase 4B In Review — Awaiting Approval

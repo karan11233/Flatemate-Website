@@ -21,11 +21,12 @@ export const InterestSuccessModal: React.FC<InterestSuccessModalProps> = ({
   if (!isOpen || !space) return null;
 
   const hostName = space.hostName || 'Host';
-  const rawHostPhone = (space.hostPhone || '9876543210').replace(/\D/g, '').slice(-10);
+  const rawHostPhone = space.hostPhone ? space.hostPhone.replace(/\D/g, '').slice(-10) : '';
+  const hasDirectPhone = rawHostPhone.length === 10;
   
   const whatsappMessage = `Hi ${hostName}, I saw your listing "${space.type}" in ${space.location} on Flatemate. My name is ${seekerName} (Phone: ${seekerPhone}), and I'm planning to move in around ${moveInDate || 'soon'}. Are you available for a quick chat or visit walkthrough?`;
   
-  const whatsappUrl = `https://wa.me/91${rawHostPhone}?text=${encodeURIComponent(whatsappMessage)}`;
+  const whatsappUrl = hasDirectPhone ? `https://wa.me/91${rawHostPhone}?text=${encodeURIComponent(whatsappMessage)}` : '#';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
@@ -47,27 +48,39 @@ export const InterestSuccessModal: React.FC<InterestSuccessModalProps> = ({
           </p>
         </div>
 
-        {/* Instant WhatsApp Action Box */}
-        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 text-left space-y-3">
-          <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
-            <iconify-icon icon="lucide:zap" class="text-emerald-600 text-base"></iconify-icon>
-            <span>Want a faster response?</span>
-          </div>
-          <p className="text-[11px] text-emerald-800 leading-relaxed">
-            Connect directly with {hostName} on WhatsApp with a pre-filled introduction.
-          </p>
+        {/* Instant WhatsApp Action Box or Dashboard Notice */}
+        {hasDirectPhone ? (
+          <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 text-left space-y-3">
+            <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
+              <iconify-icon icon="lucide:zap" class="text-emerald-600 text-base"></iconify-icon>
+              <span>Want a faster response?</span>
+            </div>
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              Connect directly with {hostName} on WhatsApp with a pre-filled introduction.
+            </p>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={onClose}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"
-          >
-            <iconify-icon icon="lucide:message-circle" class="text-lg"></iconify-icon>
-            <span>Chat on WhatsApp Directly</span>
-          </a>
-        </div>
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"
+            >
+              <iconify-icon icon="lucide:message-circle" class="text-lg"></iconify-icon>
+              <span>Chat on WhatsApp Directly</span>
+            </a>
+          </div>
+        ) : (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2">
+            <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
+              <iconify-icon icon="lucide:inbox" class="text-primary text-base"></iconify-icon>
+              <span>Sent to Host Dashboard</span>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              {hostName} has received your inquiry on their Flatemate Host Portal and will review it and contact you directly.
+            </p>
+          </div>
+        )}
 
         {/* Flatemate Desk Guarantee */}
         <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex items-center gap-2 text-left">
