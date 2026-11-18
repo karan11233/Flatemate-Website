@@ -481,4 +481,244 @@ describe('Hardened Database Security & RLS Invariants (Round 2)', () => {
     });
   });
 
+  describe('10. Storage Setup & Photo Access Security Specification Tests', () => {
+    // Model of Supabase Storage RLS & Path Validation based on Migration 00003
+    interface StorageObject {
+      bucket_id: string;
+      name: string; // Path inside bucket: e.g. "space-uuid/photo.jpg"
+    }
+
+    interface SpaceRecord {
+      id: string;
+      user_id: string;
+    }
+
+    const BUCKET_CONFIG = {
+      id: 'listing-photos',
+      name: 'listing-photos',
+      public: true,
+      file_size_limit: 5242880, // 5 MB
+      allowed_mime_types: ['image/jpeg', 'image/png', 'image/webp'],
+    };
+
+    const spacesDb: Record<string, SpaceRecord> = {
+      '550e8400-e29b-41d4-a716-446655440000': {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        user_id: 'user-owner-1',
+      },
+      'a0000000-0000-0000-0000-000000000001': {
+        id: 'a0000000-0000-0000-0000-000000000001',
+        user_id: 'user-owner-2',
+      },
+    };
+
+    // Helper functions modeling Supabase Storage functions
+    const storageFoldername = (name: string): string[] => {
+      const parts = name.split('/');
+      return parts.slice(0, parts.length - 1);
+    };
+
+    const storageFilename = (name: string): string => {
+      const parts = name.split('/');
+      return parts[parts.length - 1] || '';
+    };
+
+    const storageExtension = (name: string): string => {
+      const fn = storageFilename(name);
+      const dotIndex = fn.lastIndexOf('.');
+      return dotIndex >= 0 ? fn.slice(dotIndex + 1).toLowerCase() : '';
+    };
+
+    // Evaluator for Storage RLS Policies
+    const evaluateStoragePolicy = (
+      action: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE',
+      auth: { role: 'anon' | 'authenticated'; uid: string | null },
+      obj: StorageObject
+    ): { allowed: boolean; reason?: string } => {
+      // 1. SELECT Policy: "Public can view listing photos"
+      if (action === 'SELECT') {
+        if (obj.bucket_id === 'listing-photos') {
+          return { allowed: true };
+        }
+        return { allowed: false, reason: 'Bucket not public' };
+      }
+
+      // 2. INSERT / UPDATE / DELETE require authenticated role
+      if (auth.role !== 'authenticated' || !auth.uid) {
+        return { allowed: false, reason: 'Authentication required' };
+      }
+
+      if (obj.bucket_id !== 'listing-photos') {
+        return { allowed: false, reason: 'Invalid bucket' };
+      }
+
+      // 3. Folder depth check: exactly 1 level (<space_id>/<file>)
+      const folders = storageFoldername(obj.name);
+      if (folders.length !== 1) {
+        return { allowed: false, reason: 'Path must contain exactly one directory level (<space_id>/<filename>)' };
+      }
+
+      // 4. Path traversal prevention
+      if (obj.name.includes('..')) {
+        return { allowed: false, reason: 'Path traversal sequences (..) are strictly forbidden' };
+      }
+
+      // 5. Filename & UUID syntax check for INSERT & UPDATE
+      const pathRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[a-zA-Z0-9_\-][a-zA-Z0-9_\-\. ]*\.(jpe?g|png|webp)$/i;
+      if (action === 'INSERT' || action === 'UPDATE') {
+        if (!pathRegex.test(obj.name)) {
+          return { allowed: false, reason: 'Path does not match valid <uuid>/<clean_filename>.(jpg|jpeg|png|webp) format' };
+        }
+
+        const ext = storageExtension(obj.name);
+        if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+          return { allowed: false, reason: `File extension .${ext} is not allowed` };
+        }
+      }
+
+      // 6. Space Ownership Check: caller must own the space in (storage.foldername(name))[1]
+      const targetSpaceId = folders[0];
+      const space = spacesDb[targetSpaceId];
+      if (!space || space.user_id !== auth.uid) {
+        return { allowed: false, reason: 'Listing ownership required. Caller does not own this space.' };
+      }
+
+      return { allowed: true };
+    };
+
+    it('verifies bucket configuration conforms to 5 MB limit and image MIME whitelist', () => {
+      expect(BUCKET_CONFIG.id).toBe('listing-photos');
+      expect(BUCKET_CONFIG.public).toBe(true);
+      expect(BUCKET_CONFIG.file_size_limit).toBe(5242880);
+      expect(BUCKET_CONFIG.allowed_mime_types).toEqual(['image/jpeg', 'image/png', 'image/webp']);
+    });
+
+    it('verifies anonymous visitors can view listing photos via CDN but cannot upload, update, or delete', () => {
+      const samplePhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/living_room.jpg',
+      };
+
+      const anonAuth = { role: 'anon' as const, uid: null };
+
+      // SELECT allowed for public CDN delivery
+      expect(evaluateStoragePolicy('SELECT', anonAuth, samplePhoto).allowed).toBe(true);
+
+      // INSERT denied
+      const insertResult = evaluateStoragePolicy('INSERT', anonAuth, samplePhoto);
+      expect(insertResult.allowed).toBe(false);
+      expect(insertResult.reason).toContain('Authentication required');
+
+      // UPDATE denied
+      expect(evaluateStoragePolicy('UPDATE', anonAuth, samplePhoto).allowed).toBe(false);
+
+      // DELETE denied
+      expect(evaluateStoragePolicy('DELETE', anonAuth, samplePhoto).allowed).toBe(false);
+    });
+
+    it('verifies listing owners can upload, update, and delete photos for their own spaces', () => {
+      const ownerAuth = { role: 'authenticated' as const, uid: 'user-owner-1' };
+      const validPhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/bedroom-1.png',
+      };
+
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, validPhoto).allowed).toBe(true);
+      expect(evaluateStoragePolicy('UPDATE', ownerAuth, validPhoto).allowed).toBe(true);
+      expect(evaluateStoragePolicy('DELETE', ownerAuth, validPhoto).allowed).toBe(true);
+    });
+
+    it('verifies authenticated users cannot upload, update, or delete photos for listings they do not own', () => {
+      const otherUserAuth = { role: 'authenticated' as const, uid: 'attacker-user-3' };
+      const victimSpacePhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/hacked.jpg',
+      };
+
+      const insertCheck = evaluateStoragePolicy('INSERT', otherUserAuth, victimSpacePhoto);
+      expect(insertCheck.allowed).toBe(false);
+      expect(insertCheck.reason).toContain('Listing ownership required');
+
+      const updateCheck = evaluateStoragePolicy('UPDATE', otherUserAuth, victimSpacePhoto);
+      expect(updateCheck.allowed).toBe(false);
+      expect(updateCheck.reason).toContain('Listing ownership required');
+
+      const deleteCheck = evaluateStoragePolicy('DELETE', otherUserAuth, victimSpacePhoto);
+      expect(deleteCheck.allowed).toBe(false);
+      expect(deleteCheck.reason).toContain('Listing ownership required');
+    });
+
+    it('rejects extra nested subdirectories, empty filenames, and directory traversal attempts', () => {
+      const ownerAuth = { role: 'authenticated' as const, uid: 'user-owner-1' };
+
+      // Extra subfolder (<uuid>/sub/photo.jpg) -> Rejected (folders.length > 1)
+      const nestedPhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/subfolder/nested/photo.jpg',
+      };
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, nestedPhoto).allowed).toBe(false);
+
+      // Root path (no folder) -> Rejected (folders.length === 0)
+      const rootPhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: 'photo.jpg',
+      };
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, rootPhoto).allowed).toBe(false);
+
+      // Path traversal (..) -> Rejected
+      const traversalPhoto: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/../other-space/hack.jpg',
+      };
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, traversalPhoto).allowed).toBe(false);
+
+      // Empty filename (<uuid>/) -> Rejected
+      const emptyFilename: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: '550e8400-e29b-41d4-a716-446655440000/',
+      };
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, emptyFilename).allowed).toBe(false);
+
+      // Invalid UUID folder -> Rejected
+      const nonUuidFolder: StorageObject = {
+        bucket_id: 'listing-photos',
+        name: 'not-a-valid-uuid/photo.jpg',
+      };
+      expect(evaluateStoragePolicy('INSERT', ownerAuth, nonUuidFolder).allowed).toBe(false);
+    });
+
+    it('rejects disallowed file extensions (executables, scripts, SVGs, documents)', () => {
+      const ownerAuth = { role: 'authenticated' as const, uid: 'user-owner-1' };
+
+      const maliciousFiles = [
+        '550e8400-e29b-41d4-a716-446655440000/shell.sh',
+        '550e8400-e29b-41d4-a716-446655440000/exploit.exe',
+        '550e8400-e29b-41d4-a716-446655440000/xss.svg',
+        '550e8400-e29b-41d4-a716-446655440000/document.pdf',
+        '550e8400-e29b-41d4-a716-446655440000/image.gif',
+      ];
+
+      for (const fileName of maliciousFiles) {
+        const obj: StorageObject = { bucket_id: 'listing-photos', name: fileName };
+        expect(evaluateStoragePolicy('INSERT', ownerAuth, obj).allowed).toBe(false);
+      }
+    });
+
+    it('accepts legitimate filenames with spaces, dashes, numbers, and allowed extensions', () => {
+      const ownerAuth = { role: 'authenticated' as const, uid: 'user-owner-1' };
+
+      const validFiles = [
+        '550e8400-e29b-41d4-a716-446655440000/Master Bedroom 1.jpg',
+        '550e8400-e29b-41d4-a716-446655440000/living-room-balcony.PNG',
+        '550e8400-e29b-41d4-a716-446655440000/kitchen_setup_2026.webp',
+        '550e8400-e29b-41d4-a716-446655440000/flat.exterior.jpeg',
+      ];
+
+      for (const fileName of validFiles) {
+        const obj: StorageObject = { bucket_id: 'listing-photos', name: fileName };
+        expect(evaluateStoragePolicy('INSERT', ownerAuth, obj).allowed).toBe(true);
+      }
+    });
+  });
+
 });

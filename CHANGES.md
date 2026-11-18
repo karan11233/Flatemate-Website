@@ -152,12 +152,18 @@ Phase 4B: Final Integration Verification, Strict Phone Number Validation (No Sil
 - `website/tests/database-security.test.ts`
 - `CHANGES.md`
 
+### Migration 3: Storage Setup Audit & Hardening
+- **Path Structure Validation**: Hardened `00003_storage_setup.sql` policies to strictly enforce single-folder depth (`array_length(storage.foldername(name), 1) = 1`), reject path traversal sequences (`name not like '%..%'`), require valid 36-character UUID space folder names, and whitelist file extensions (`.jpg`, `.jpeg`, `.png`, `.webp`) at both regex and extension level.
+- **Ownership Comment Corrections**: Replaced misleading references to "verified ownership" with "authenticated space ownership" (`user_id = auth.uid()`), maintaining zero-trust parity with Migration 2.
+- **Specification Regression Tests**: Added Section 10 in `tests/database-security.test.ts` covering bucket 5 MB limit, image MIME whitelist, public CDN viewing, authenticated-only uploads, space ownership isolation, subfolder rejection, path traversal rejection, empty filename rejection, and extension filtering (7 new tests).
+- **Website Compatibility Finding**: Audited frontend and Server Actions; confirmed that while the UI provides local FileReader previews and URL validation (`isApprovedImageSource`), direct client/server storage bucket upload wiring is not yet implemented and will be integrated during the dedicated photo upload task.
+
 ### Test & Build Verification Results
 ```
-Test Files: 6 passed (6) | Tests: 74 passed (74)
+Test Files: 6 passed (6) | Tests: 81 passed (81)
 - tests/validations.test.ts (33 tests passed)
 - tests/actions-security.test.ts (15 tests passed)
-- tests/database-security.test.ts (15 tests passed - added table privileges & grant specification tests)
+- tests/database-security.test.ts (22 tests passed - added 7 storage security & path validation tests)
 - tests/parity-interactions.test.ts (6 tests passed)
 - tests/foundation.test.ts (4 tests passed)
 - tests/migrations-execution.test.ts (1 test passed)

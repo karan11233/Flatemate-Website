@@ -3,9 +3,10 @@
 -- ============================================================================
 -- Supabase Storage bucket and access policies for property listing photos.
 -- Enforces:
--- 1. Dual verification: Authenticated user AND Verified Space Ownership
+-- 1. Dual authorization: Authenticated user AND Space Ownership
 -- 2. Strict file size limits (5 MB) and MIME type whitelist
 -- 3. Protection against cross-listing photo tampering
+-- 4. Path structure validation (<space_id>/<filename>.<ext>)
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -35,15 +36,20 @@ create policy "Public can view listing photos"
   on storage.objects for select
   using (bucket_id = 'listing-photos');
 
--- Dual verification for Upload:
+-- Dual authorization for Upload:
 -- 1. Caller must be authenticated
 -- 2. Caller must own the space referenced by the path: (storage.foldername(name))[1]
+-- 3. Path must be strictly <space_id_uuid>/<clean_filename>.<ext> (no subfolders, no traversal)
 drop policy if exists "Listing owners can upload photos" on storage.objects;
 create policy "Listing owners can upload photos"
   on storage.objects for insert
   with check (
     bucket_id = 'listing-photos'
     and auth.role() = 'authenticated'
+    and array_length(storage.foldername(name), 1) = 1
+    and name not like '%..%'
+    and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-zA-Z0-9_\-][a-zA-Z0-9_\-\. ]*\.(jpe?g|png|webp)$'
+    and lower(storage.extension(name)) in ('jpg', 'jpeg', 'png', 'webp')
     and exists (
       select 1 from public.spaces s
       where s.id::text = (storage.foldername(name))[1]
@@ -51,7 +57,7 @@ create policy "Listing owners can upload photos"
     )
   );
 
--- Dual verification for Update:
+-- Dual authorization for Update:
 -- Listing owner can replace existing photo for their space
 drop policy if exists "Listing owners can update photos" on storage.objects;
 create policy "Listing owners can update photos"
@@ -59,6 +65,9 @@ create policy "Listing owners can update photos"
   using (
     bucket_id = 'listing-photos'
     and auth.role() = 'authenticated'
+    and array_length(storage.foldername(name), 1) = 1
+    and name not like '%..%'
+    and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-zA-Z0-9_\-][a-zA-Z0-9_\-\. ]*\.(jpe?g|png|webp)$'
     and exists (
       select 1 from public.spaces s
       where s.id::text = (storage.foldername(name))[1]
@@ -68,6 +77,10 @@ create policy "Listing owners can update photos"
   with check (
     bucket_id = 'listing-photos'
     and auth.role() = 'authenticated'
+    and array_length(storage.foldername(name), 1) = 1
+    and name not like '%..%'
+    and name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-zA-Z0-9_\-][a-zA-Z0-9_\-\. ]*\.(jpe?g|png|webp)$'
+    and lower(storage.extension(name)) in ('jpg', 'jpeg', 'png', 'webp')
     and exists (
       select 1 from public.spaces s
       where s.id::text = (storage.foldername(name))[1]
@@ -75,7 +88,7 @@ create policy "Listing owners can update photos"
     )
   );
 
--- Dual verification for Delete:
+-- Dual authorization for Delete:
 -- Only the owner of the referenced space can delete photos
 drop policy if exists "Listing owners can delete photos" on storage.objects;
 create policy "Listing owners can delete photos"
@@ -83,6 +96,8 @@ create policy "Listing owners can delete photos"
   using (
     bucket_id = 'listing-photos'
     and auth.role() = 'authenticated'
+    and array_length(storage.foldername(name), 1) = 1
+    and name not like '%..%'
     and exists (
       select 1 from public.spaces s
       where s.id::text = (storage.foldername(name))[1]
