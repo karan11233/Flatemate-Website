@@ -1,13 +1,14 @@
 -- ============================================================================
--- Flatemate Production Database Schema — Migration 00002: Row Level Security (Hardened v2)
+-- Flatemate Production Database Schema — Migration 00002: Row Level Security (Hardened v3)
 -- ============================================================================
 -- Zero-trust RLS policies and PostgREST access controls.
 -- Enforces:
--- 1. Direct PostgREST SELECT on raw public.spaces returns ONLY rows owned by caller.
+-- 1. Explicit SQL privilege grants & revokes for anon and authenticated roles.
+-- 2. Direct PostgREST SELECT on raw public.spaces returns ONLY rows owned by caller.
 --    Anonymous queries to raw spaces return 0 rows. Public browsing MUST query public_spaces.
--- 2. Sensitive claim tokens completely isolated in space_claim_secrets (zero public access).
--- 3. Strict field-level UPDATE boundaries on inquiries and spaces.
--- 4. Hard deletion denied on inquiries to preserve participant communication records.
+-- 3. Sensitive claim tokens completely isolated in space_claim_secrets (zero public access).
+-- 4. Strict field-level UPDATE boundaries on inquiries and spaces.
+-- 5. Hard deletion denied on inquiries to preserve participant communication records.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -36,8 +37,12 @@ create policy "Users can update own profile"
   using (auth.uid() is not null and auth.uid() = id)
   with check (auth.uid() is not null and auth.uid() = id);
 
--- Grant access to the filtered public_profiles view
+-- Explicit SQL privileges
 revoke all on public.profiles from anon;
+revoke insert, delete on public.profiles from authenticated;
+grant select, update on public.profiles to authenticated;
+
+-- Grant access to the filtered public_profiles view
 grant select on public.public_profiles to anon, authenticated;
 
 -- ----------------------------------------------------------------------------
@@ -60,18 +65,22 @@ create policy "Authenticated users can create spaces"
     and auth.uid() = user_id
   );
 
--- Only verified owners can update their listings (Triggers enforce business fields)
+-- Only authenticated space owners can update their listings (Triggers enforce business fields)
 drop policy if exists "Owners can update own spaces" on public.spaces;
 create policy "Owners can update own spaces"
   on public.spaces for update
   using (auth.uid() is not null and auth.uid() = user_id)
   with check (auth.uid() is not null and auth.uid() = user_id);
 
--- Only verified owners can delete their listings
+-- Only authenticated space owners can delete their listings
 drop policy if exists "Owners can delete own spaces" on public.spaces;
 create policy "Owners can delete own spaces"
   on public.spaces for delete
   using (auth.uid() is not null and auth.uid() = user_id);
+
+-- Explicit SQL privileges
+revoke all on public.spaces from anon;
+grant select, insert, update, delete on public.spaces to authenticated;
 
 -- Public browsing grant on sanitized view
 grant select on public.public_spaces to anon, authenticated;
@@ -88,7 +97,7 @@ create policy "Service role only for claim secrets"
 revoke all on public.space_claim_secrets from anon, authenticated;
 
 -- ----------------------------------------------------------------------------
--- 5. Space Photos Policies
+-- 5. Space Photos Policies & Grants
 -- ----------------------------------------------------------------------------
 drop policy if exists "Public can view space photos" on public.space_photos;
 create policy "Public can view space photos"
@@ -117,8 +126,13 @@ create policy "Space owners can delete photos"
     )
   );
 
+-- Explicit SQL privileges
+revoke all on public.space_photos from anon, authenticated;
+grant select on public.space_photos to anon, authenticated;
+grant insert, delete on public.space_photos to authenticated;
+
 -- ----------------------------------------------------------------------------
--- 6. Inquiries Policies
+-- 6. Inquiries Policies & Grants
 -- ----------------------------------------------------------------------------
 -- Zero unauthenticated leaks: anonymous queries return 0 rows
 drop policy if exists "Hosts and seekers can view own inquiries" on public.inquiries;
@@ -164,8 +178,13 @@ create policy "Deny unilateral hard delete inquiries"
   on public.inquiries for delete
   using (false);
 
+-- Explicit SQL privileges
+revoke all on public.inquiries from anon, authenticated;
+grant insert on public.inquiries to anon;
+grant select, insert, update on public.inquiries to authenticated;
+
 -- ----------------------------------------------------------------------------
--- 7. Reports & Rate Limits
+-- 7. Reports & Rate Limits Policies & Grants
 -- ----------------------------------------------------------------------------
 drop policy if exists "Anyone can submit listing report" on public.reports;
 create policy "Anyone can submit listing report"
@@ -177,6 +196,12 @@ create policy "Reporters can view own reports"
   on public.reports for select
   using (auth.uid() is not null and auth.uid() = reporter_id);
 
+-- Explicit SQL privileges for reports
+revoke all on public.reports from anon, authenticated;
+grant insert on public.reports to anon;
+grant select, insert on public.reports to authenticated;
+
+-- Explicit SQL privileges for rate_limits
 drop policy if exists "Service role manages rate limits" on public.rate_limits;
 create policy "Service role manages rate limits"
   on public.rate_limits

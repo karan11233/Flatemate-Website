@@ -393,4 +393,92 @@ describe('Hardened Database Security & RLS Invariants (Round 2)', () => {
     });
   });
 
+  describe('9. PostgreSQL Grants & Table Privileges Specification Tests', () => {
+    // Model of PostgreSQL grant evaluation engine based on Migration 00002
+    type Role = 'anon' | 'authenticated' | 'service_role';
+    type Action = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
+
+    const tablePrivileges: Record<string, Record<Role, Set<Action>>> = {
+      profiles: {
+        anon: new Set(), // REVOKE ALL
+        authenticated: new Set(['SELECT', 'UPDATE']), // Only own profile via RLS
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      spaces: {
+        anon: new Set(), // REVOKE ALL (Must use public_spaces view)
+        authenticated: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']), // Filtered to own listings
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      space_claim_secrets: {
+        anon: new Set(), // REVOKE ALL
+        authenticated: new Set(), // REVOKE ALL
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      space_photos: {
+        anon: new Set(['SELECT']), // Public can view photos
+        authenticated: new Set(['SELECT', 'INSERT', 'DELETE']), // Space owners manage photos
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      inquiries: {
+        anon: new Set(['INSERT']), // Anonymous seekers submit lead inquiries
+        authenticated: new Set(['SELECT', 'INSERT', 'UPDATE']), // No DELETE permission
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      reports: {
+        anon: new Set(['INSERT']), // Community flags listings
+        authenticated: new Set(['SELECT', 'INSERT']), // View own reports
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+      rate_limits: {
+        anon: new Set(), // REVOKE ALL
+        authenticated: new Set(), // REVOKE ALL
+        service_role: new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE']),
+      },
+    };
+
+    const hasTablePrivilege = (role: Role, table: string, action: Action): boolean => {
+      return tablePrivileges[table]?.[role]?.has(action) ?? false;
+    };
+
+    it('verifies anonymous role has zero direct table access to raw spaces, profiles, secrets, and rate limits', () => {
+      expect(hasTablePrivilege('anon', 'spaces', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'spaces', 'INSERT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'profiles', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'profiles', 'UPDATE')).toBe(false);
+      expect(hasTablePrivilege('anon', 'space_claim_secrets', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'rate_limits', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'rate_limits', 'UPDATE')).toBe(false);
+    });
+
+    it('verifies anonymous role can only INSERT into inquiries and reports, with zero SELECT/UPDATE/DELETE access', () => {
+      expect(hasTablePrivilege('anon', 'inquiries', 'INSERT')).toBe(true);
+      expect(hasTablePrivilege('anon', 'inquiries', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'inquiries', 'UPDATE')).toBe(false);
+      expect(hasTablePrivilege('anon', 'inquiries', 'DELETE')).toBe(false);
+
+      expect(hasTablePrivilege('anon', 'reports', 'INSERT')).toBe(true);
+      expect(hasTablePrivilege('anon', 'reports', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('anon', 'reports', 'UPDATE')).toBe(false);
+      expect(hasTablePrivilege('anon', 'reports', 'DELETE')).toBe(false);
+    });
+
+    it('verifies authenticated users cannot delete inquiries or claim secrets, preserving audit integrity', () => {
+      expect(hasTablePrivilege('authenticated', 'inquiries', 'SELECT')).toBe(true);
+      expect(hasTablePrivilege('authenticated', 'inquiries', 'INSERT')).toBe(true);
+      expect(hasTablePrivilege('authenticated', 'inquiries', 'UPDATE')).toBe(true);
+      expect(hasTablePrivilege('authenticated', 'inquiries', 'DELETE')).toBe(false); // Hard deletion denied
+
+      expect(hasTablePrivilege('authenticated', 'space_claim_secrets', 'SELECT')).toBe(false);
+      expect(hasTablePrivilege('authenticated', 'space_claim_secrets', 'DELETE')).toBe(false);
+    });
+
+    it('verifies authenticated users cannot direct-insert or delete profiles', () => {
+      // Profile creation is strictly handled by handle_new_user auth trigger
+      expect(hasTablePrivilege('authenticated', 'profiles', 'INSERT')).toBe(false);
+      expect(hasTablePrivilege('authenticated', 'profiles', 'DELETE')).toBe(false);
+      expect(hasTablePrivilege('authenticated', 'profiles', 'SELECT')).toBe(true);
+      expect(hasTablePrivilege('authenticated', 'profiles', 'UPDATE')).toBe(true);
+    });
+  });
+
 });

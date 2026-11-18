@@ -104,12 +104,20 @@ describe('SQL Migrations Execution & Schema Verification', () => {
     expect(() => db.public.one(`select count(*) as count from public.public_spaces`)).not.toThrow();
     expect(() => db.public.one(`select count(*) as count from public.public_profiles`)).not.toThrow();
 
-    // 2. Storage setup
+    // 2. Row Level Security & Grants (00002_row_level_security.sql)
+    const rawRls = fs.readFileSync(path.join(migrationsDir, '00002_row_level_security.sql'), 'utf-8');
+    const rlsSql = cleanForPgMem(rawRls);
+    const hasRlsStatements = rlsSql.split(';').some((s) => s.replace(/--.*$/gm, '').trim().length > 0);
+    if (hasRlsStatements) {
+      expect(() => db.public.none(rlsSql)).not.toThrow();
+    }
+
+    // 3. Storage setup (00003_storage_setup.sql)
     const rawStorage = fs.readFileSync(path.join(migrationsDir, '00003_storage_setup.sql'), 'utf-8');
     const storageSql = cleanForPgMem(rawStorage);
     expect(() => db.public.none(storageSql)).not.toThrow();
 
-    // 3. Seed Ahmedabad data
+    // 4. Seed Ahmedabad data (00004_seed_ahmedabad.sql)
     const rawSeed = fs.readFileSync(path.join(migrationsDir, '00004_seed_ahmedabad.sql'), 'utf-8');
     const seedSql = rawSeed.replace(/do \$\$[\s\S]*?\$\$;/gi, '');
     expect(() => db.public.none(seedSql)).not.toThrow();
